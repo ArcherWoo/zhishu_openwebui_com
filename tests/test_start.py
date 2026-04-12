@@ -8,6 +8,7 @@ import pytest
 
 import start
 import start_prod
+from open_webui import uvicorn_runner
 
 
 def test_run_cli_exits_cleanly_on_keyboard_interrupt(monkeypatch, capsys):
@@ -91,6 +92,27 @@ def test_launch_open_webui_logs_browser_and_lan_urls(monkeypatch, capsys):
     assert '[start] 局域网访问地址: http://192.168.1.20:8080' in captured.out
 
 
+def test_build_uvicorn_command_uses_wrapper_module_for_clean_interrupt_shutdown():
+    args = SimpleNamespace(host='0.0.0.0', port=8080)
+    venv_python = Path('C:/fake/python.exe')
+
+    command = start.build_uvicorn_command(
+        venv_python,
+        args,
+        {
+            'FORWARDED_ALLOW_IPS': '*',
+            'UVICORN_WORKERS': '1',
+            'UVICORN_WS': 'auto',
+        },
+    )
+
+    assert command[:3] == [str(venv_python), '-m', 'open_webui.uvicorn_runner']
+    assert '--host' in command
+    assert '--port' in command
+    assert '--workers' in command
+    assert '--ws' in command
+
+
 def test_run_managed_process_logs_graceful_shutdown_and_returns_130(capsys):
     class DummyProcess:
         def __init__(self):
@@ -118,3 +140,14 @@ def test_run_managed_process_logs_graceful_shutdown_and_returns_130(capsys):
     captured = capsys.readouterr()
     assert '[start] 收到中断信号，正在优雅关闭 Open WebUI...' in captured.out
     assert '[start] Open WebUI 已停止。' in captured.out
+
+
+def test_uvicorn_runner_returns_130_on_keyboard_interrupt(monkeypatch):
+    def fake_run(**kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(uvicorn_runner.uvicorn, 'run', fake_run)
+
+    exit_code = uvicorn_runner.main(['--host', '127.0.0.1', '--port', '8080'])
+
+    assert exit_code == 130

@@ -810,8 +810,7 @@ def build_uvicorn_command(
     command = [
         str(venv_python),
         '-m',
-        'uvicorn',
-        'open_webui.main:app',
+        'open_webui.uvicorn_runner',
         '--host',
         args.host,
         '--port',
