@@ -38,6 +38,11 @@ PACKAGE_LOCK = ROOT / 'package-lock.json'
 BUILD_DIR = ROOT / 'build'
 STATE_FILE = ROOT / '.start-state.json'
 BUILD_MARKER = BUILD_DIR / '.built-by-start'
+VENDOR_DIR = ROOT / 'vendor'
+PYTHON_VENDOR_DIR = VENDOR_DIR / 'python'
+NPM_VENDOR_DIR = VENDOR_DIR / 'npm'
+VENDOR_REPORT_JSON = VENDOR_DIR / 'report.json'
+VENDOR_REPORT_MD = VENDOR_DIR / 'report.md'
 SCRIPT_STATE_VERSION = 1
 GRACEFUL_STOP_TIMEOUT = 8.0
 
@@ -656,6 +661,105 @@ def latest_mtime(path: Path) -> float:
     return latest
 
 
+def vendor_dir_has_files(path: Path) -> bool:
+    if not path.exists():
+        return False
+
+    for child in path.rglob('*'):
+        if child.is_file():
+            return True
+    return False
+
+
+def build_python_install_commands(
+    venv_python: Path,
+    vendor_dir: Path,
+    requirements_file: Path,
+) -> tuple[list[str], list[str]]:
+    local_only_command = [
+        str(venv_python),
+        '-m',
+        'pip',
+        'install',
+        '--no-index',
+        '--find-links',
+        str(vendor_dir),
+        '-r',
+        str(requirements_file),
+    ]
+    fallback_command = [
+        str(venv_python),
+        '-m',
+        'pip',
+        'install',
+        '--find-links',
+        str(vendor_dir),
+        '-r',
+        str(requirements_file),
+    ]
+    return local_only_command, fallback_command
+
+
+def build_python_requirement_install_commands(
+    venv_python: Path,
+    vendor_dir: Path,
+    requirement: str,
+) -> tuple[list[str], list[str]]:
+    local_only_command = [
+        str(venv_python),
+        '-m',
+        'pip',
+        'install',
+        '--no-index',
+        '--find-links',
+        str(vendor_dir),
+        requirement,
+    ]
+    fallback_command = [
+        str(venv_python),
+        '-m',
+        'pip',
+        'install',
+        '--find-links',
+        str(vendor_dir),
+        requirement,
+    ]
+    return local_only_command, fallback_command
+
+
+def build_npm_install_commands(
+    npm_executable: str,
+    vendor_dir: Path,
+) -> tuple[list[str], list[str]]:
+    cache_dir = str(vendor_dir)
+    local_only_command = [npm_executable, 'ci', '--cache', cache_dir, '--offline']
+    fallback_command = [npm_executable, 'ci', '--cache', cache_dir, '--prefer-offline']
+    return local_only_command, fallback_command
+
+
+def run_with_vendor_fallback(
+    local_only_command: list[str],
+    fallback_command: list[str],
+    *,
+    vendor_dir: Path,
+    env: dict[str, str],
+    local_label: str,
+    fallback_label: str,
+) -> None:
+    vendor_dir.mkdir(parents=True, exist_ok=True)
+
+    if vendor_dir_has_files(vendor_dir):
+        try:
+            run(local_only_command, env=env)
+            return
+        except subprocess.CalledProcessError:
+            log(f'{local_label} 未完全命中本地 vendor 目录，正在回退到 {fallback_label}...')
+    else:
+        log(f'未检测到可用的本地 vendor 缓存，直接使用 {fallback_label}。')
+
+    run(fallback_command, env=env)
+
+
 # 判断前端产物是否过期，过期才重新构建。
 def frontend_needs_build() -> bool:
     if not BUILD_DIR.exists() or not BUILD_MARKER.exists():
@@ -690,10 +794,34 @@ def ensure_backend_dependencies(
     }
 
     if args.force_python_install or cached != expected:
-        run([str(venv_python), '-m', 'pip', 'install', '-r', str(REQUIREMENTS_FILE)], env=pip_env)
+        local_only_command, fallback_command = build_python_install_commands(
+            venv_python,
+            PYTHON_VENDOR_DIR,
+            REQUIREMENTS_FILE,
+        )
+        run_with_vendor_fallback(
+            local_only_command,
+            fallback_command,
+            vendor_dir=PYTHON_VENDOR_DIR,
+            env=pip_env,
+            local_label='后端 Python 依赖安装',
+            fallback_label='镜像源或在线 pip 安装',
+        )
 
         if interpreter_version(str(venv_python)) and interpreter_version(str(venv_python)) >= (3, 13, 0):
-            run([str(venv_python), '-m', 'pip', 'install', 'audioop-lts'], env=pip_env)
+            local_only_command, fallback_command = build_python_requirement_install_commands(
+                venv_python,
+                PYTHON_VENDOR_DIR,
+                'audioop-lts',
+            )
+            run_with_vendor_fallback(
+                local_only_command,
+                fallback_command,
+                vendor_dir=PYTHON_VENDOR_DIR,
+                env=pip_env,
+                local_label='audioop-lts 本地安装',
+                fallback_label='镜像源或在线 pip 安装',
+            )
 
         state['python'] = expected
         save_state(state)
@@ -720,7 +848,18 @@ def ensure_frontend_dependencies(
     }
 
     if args.force_node_install or cached != expected or not (ROOT / 'node_modules').exists():
-        run([npm_executable, 'ci'], env=npm_env)
+        local_only_command, fallback_command = build_npm_install_commands(
+            npm_executable,
+            NPM_VENDOR_DIR,
+        )
+        run_with_vendor_fallback(
+            local_only_command,
+            fallback_command,
+            vendor_dir=NPM_VENDOR_DIR,
+            env=npm_env,
+            local_label='前端 npm 本地缓存安装',
+            fallback_label='镜像源或在线 npm 安装',
+        )
         state['node'] = expected
         save_state(state)
     else:
