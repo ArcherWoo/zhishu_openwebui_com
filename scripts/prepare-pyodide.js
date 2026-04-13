@@ -26,7 +26,16 @@ const pypiPackages = ['black', 'pathspec', 'mypy_extensions'];
 
 import { loadPyodide } from 'pyodide';
 import { setGlobalDispatcher, ProxyAgent } from 'undici';
-import { writeFile, readFile, copyFile, readdir, rmdir, access } from 'fs/promises';
+import { writeFile, readFile, copyFile, readdir, rm, access, mkdir } from 'fs/promises';
+import {
+	buildCacheMetadata,
+	validateCacheState,
+	PYODIDE_CACHE_METADATA_FILE
+} from './lib/pyodide-cache.js';
+
+const cacheDir = 'static/pyodide';
+const nodePyodideDir = 'node_modules/pyodide';
+const cacheMetadataPath = `${cacheDir}/${PYODIDE_CACHE_METADATA_FILE}`;
 
 function trimTrailingSlash(value) {
 	return value.replace(/\/+$/, '');
@@ -49,6 +58,64 @@ function envValue(...keys) {
 const pyodideBaseUrl = envValue('OPEN_WEBUI_PYODIDE_BASE_URL');
 const pypiJsonBaseUrl = envValue('OPEN_WEBUI_PYPI_JSON_BASE_URL', 'OPEN_WEBUI_PYPI_BASE_URL');
 const pypiFilesBaseUrl = envValue('OPEN_WEBUI_PYPI_FILES_BASE_URL');
+
+async function readJsonIfExists(path) {
+	try {
+		return JSON.parse(await readFile(path, 'utf-8'));
+	} catch {
+		return null;
+	}
+}
+
+async function listFilesIfExists(path) {
+	try {
+		return await readdir(path);
+	} catch {
+		return [];
+	}
+}
+
+async function getInstalledPyodideVersion() {
+	const packageJson = JSON.parse(await readFile(`${nodePyodideDir}/package.json`, 'utf-8'));
+	return packageJson.version;
+}
+
+async function getCacheState(pyodideVersion) {
+	const actualMetadata = await readJsonIfExists(cacheMetadataPath);
+	const cachedPackageJson = await readJsonIfExists(`${cacheDir}/package.json`);
+	const existingFiles = await listFilesIfExists(cacheDir);
+	const requiredFiles = await listFilesIfExists(nodePyodideDir);
+	const expectedMetadata = buildCacheMetadata({
+		pyodideVersion,
+		packages,
+		pypiPackages
+	});
+	const validation = validateCacheState({
+		expectedMetadata,
+		actualMetadata,
+		existingFiles,
+		requiredFiles
+	});
+
+	return {
+		...validation,
+		expectedMetadata,
+		actualMetadata,
+		existingFiles,
+		cacheVersion: actualMetadata?.pyodideVersion ?? cachedPackageJson?.version ?? null
+	};
+}
+
+function printCacheReasons(reasons) {
+	if (reasons.length === 0) {
+		return;
+	}
+
+	console.log('Pyodide cache refresh required because:');
+	for (const reason of reasons) {
+		console.log(`- ${reason}`);
+	}
+}
 
 /**
  * Loading network proxy configurations from the environment variables.
@@ -86,27 +153,12 @@ async function downloadPackages() {
 	let pyodide;
 	try {
 		pyodide = await loadPyodide({
-			packageCacheDir: 'static/pyodide',
+			packageCacheDir: cacheDir,
 			indexURL: pyodideBaseUrl ? joinUrl(pyodideBaseUrl, '') : undefined
 		});
 	} catch (err) {
 		console.error('Failed to load Pyodide:', err);
-		return;
-	}
-
-	const packageJson = JSON.parse(await readFile('package.json'));
-	const pyodideVersion = packageJson.dependencies.pyodide.replace('^', '');
-
-	try {
-		const pyodidePackageJson = JSON.parse(await readFile('static/pyodide/package.json'));
-		const pyodidePackageVersion = pyodidePackageJson.version.replace('^', '');
-
-		if (pyodideVersion !== pyodidePackageVersion) {
-			console.log('Pyodide version mismatch, removing static/pyodide directory');
-			await rmdir('static/pyodide', { recursive: true });
-		}
-	} catch (err) {
-		console.log('Pyodide package not found, proceeding with download.', err);
+		return false;
 	}
 
 	try {
@@ -123,27 +175,31 @@ async function downloadPackages() {
 			}
 		} catch (err) {
 			console.error('Package installation failed:', err);
-			return;
+			return false;
 		}
 
 		console.log('Pyodide packages downloaded, freezing into lock file');
 
 		try {
 			const lockFile = await micropip.freeze();
-			await writeFile('static/pyodide/pyodide-lock.json', lockFile);
+			await writeFile(`${cacheDir}/pyodide-lock.json`, lockFile);
 		} catch (err) {
 			console.error('Failed to write lock file:', err);
+			return false;
 		}
 	} catch (err) {
 		console.error('Failed to load or install micropip:', err);
+		return false;
 	}
+
+	return true;
 }
 
 async function copyPyodide() {
 	console.log('Copying Pyodide files into static directory');
 	// Copy all files from node_modules/pyodide to static/pyodide
-	for await (const entry of await readdir('node_modules/pyodide')) {
-		await copyFile(`node_modules/pyodide/${entry}`, `static/pyodide/${entry}`);
+	for await (const entry of await readdir(nodePyodideDir)) {
+		await copyFile(`${nodePyodideDir}/${entry}`, `${cacheDir}/${entry}`);
 	}
 }
 
@@ -153,14 +209,17 @@ async function copyPyodide() {
  * packages from the local server instead of fetching them from the internet.
  */
 async function downloadPyPIWheels() {
-	const lockPath = 'static/pyodide/pyodide-lock.json';
+	const lockPath = `${cacheDir}/pyodide-lock.json`;
 	let lockData;
 	try {
 		lockData = JSON.parse(await readFile(lockPath, 'utf-8'));
 	} catch {
 		console.warn('Could not read pyodide-lock.json, skipping PyPI wheel download');
-		return;
+		return { ok: false, wheelFiles: [] };
 	}
+
+	const wheelFiles = [];
+	let hadFailure = false;
 
 	for (const pkg of pypiPackages) {
 		console.log(`Fetching PyPI metadata for: ${pkg}`);
@@ -170,6 +229,7 @@ async function downloadPyPIWheels() {
 		const res = await fetch(metadataUrl);
 		if (!res.ok) {
 			console.error(`Failed to fetch PyPI metadata for ${pkg}: ${res.status}`);
+			hadFailure = true;
 			continue;
 		}
 		const meta = await res.json();
@@ -181,9 +241,10 @@ async function downloadPyPIWheels() {
 		);
 		if (!wheel) {
 			console.warn(`No pure-Python wheel found for ${pkg}==${version}, skipping`);
+			hadFailure = true;
 			continue;
 		}
-		const dest = `static/pyodide/${wheel.filename}`;
+		const dest = `${cacheDir}/${wheel.filename}`;
 		// Download wheel if not already present
 		try {
 			await access(dest);
@@ -196,12 +257,14 @@ async function downloadPyPIWheels() {
 			const wheelRes = await fetch(wheelUrl);
 			if (!wheelRes.ok) {
 				console.error(`  Failed to download ${wheel.filename}: ${wheelRes.status}`);
+				hadFailure = true;
 				continue;
 			}
 			const buffer = Buffer.from(await wheelRes.arrayBuffer());
 			await writeFile(dest, buffer);
 			console.log(`  Saved: ${dest} (${buffer.length} bytes)`);
 		}
+		wheelFiles.push(wheel.filename);
 
 		// Inject into pyodide-lock.json so micropip resolves locally
 		const normalizedName = pkg.replace(/-/g, '_');
@@ -222,18 +285,64 @@ async function downloadPyPIWheels() {
 
 	await writeFile(lockPath, JSON.stringify(lockData, null, 2));
 	console.log('Updated pyodide-lock.json with PyPI packages');
+	return { ok: !hadFailure, wheelFiles };
 }
 
-initNetworkProxyFromEnv();
-if (pyodideBaseUrl) {
-	console.log(`Using custom Pyodide base URL: ${pyodideBaseUrl}`);
+async function writeCacheMetadata(metadata) {
+	await writeFile(cacheMetadataPath, JSON.stringify(metadata, null, 2));
 }
-if (pypiJsonBaseUrl) {
-	console.log(`Using custom PyPI metadata base URL: ${pypiJsonBaseUrl}`);
+
+async function ensureCacheDirectory() {
+	await mkdir(cacheDir, { recursive: true });
 }
-if (pypiFilesBaseUrl) {
-	console.log(`Using custom PyPI wheel base URL: ${pypiFilesBaseUrl}`);
+
+async function main() {
+	initNetworkProxyFromEnv();
+	if (pyodideBaseUrl) {
+		console.log(`Using custom Pyodide base URL: ${pyodideBaseUrl}`);
+	}
+	if (pypiJsonBaseUrl) {
+		console.log(`Using custom PyPI metadata base URL: ${pypiJsonBaseUrl}`);
+	}
+	if (pypiFilesBaseUrl) {
+		console.log(`Using custom PyPI wheel base URL: ${pypiFilesBaseUrl}`);
+	}
+
+	const pyodideVersion = await getInstalledPyodideVersion();
+	const cacheState = await getCacheState(pyodideVersion);
+
+	if (cacheState.reusable) {
+		console.log('Pyodide cache is complete; skipping pyodide fetch.');
+		return;
+	}
+
+	printCacheReasons(cacheState.reasons);
+
+	if (cacheState.cacheVersion && cacheState.cacheVersion !== pyodideVersion) {
+		console.log(
+			`Pyodide runtime changed from ${cacheState.cacheVersion} to ${pyodideVersion}, clearing ${cacheDir}`
+		);
+		await rm(cacheDir, { recursive: true, force: true });
+	}
+
+	await ensureCacheDirectory();
+
+	const packagesOk = await downloadPackages();
+	await copyPyodide();
+	const pypiResult = await downloadPyPIWheels();
+
+	if (packagesOk && pypiResult.ok) {
+		const metadata = buildCacheMetadata({
+			pyodideVersion,
+			packages,
+			pypiPackages,
+			pypiWheelFiles: pypiResult.wheelFiles
+		});
+		await writeCacheMetadata(metadata);
+		console.log(`Wrote Pyodide cache metadata: ${cacheMetadataPath}`);
+		return;
+	}
+
+	console.warn('Pyodide cache refresh finished with warnings; metadata was not written.');
 }
-await downloadPackages();
-await copyPyodide();
-await downloadPyPIWheels();
+await main();
