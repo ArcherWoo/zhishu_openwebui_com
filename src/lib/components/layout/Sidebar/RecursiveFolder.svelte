@@ -514,6 +514,8 @@
 				folderId
 					? 'bg-gray-100 dark:bg-gray-900 selected'
 					: ''}"
+				role="button"
+				tabindex="0"
 				on:dblclick={(e) => {
 					if (clickTimer) {
 						clearTimeout(clickTimer); // cancel the single-click action
@@ -549,9 +551,30 @@
 				on:pointerup={(e) => {
 					e.stopPropagation();
 				}}
+				on:keydown={async (e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						const folder = await getFolderById(localStorage.token, folderId).catch((error) => {
+							toast.error(`${error}`);
+							return null;
+						});
+
+						if (folder) {
+							await selectedFolder.set(folder);
+						}
+
+						await goto('/');
+
+						if ($mobile) {
+							showSidebar.set(!$showSidebar);
+						}
+					}
+				}}
 			>
 				<button
 					class="text-gray-500 dark:text-gray-500 transition-all p-1 hover:bg-gray-200 dark:hover:bg-gray-850 rounded-lg"
+					type="button"
+					aria-label={open ? $i18n.t('Collapse folder') : $i18n.t('Expand folder')}
 					on:click={(e) => {
 						e.stopPropagation();
 						e.stopImmediatePropagation();
@@ -616,6 +639,8 @@
 
 				<button
 					class="absolute z-10 right-2 invisible group-hover:visible self-center flex items-center dark:text-gray-300"
+					type="button"
+					aria-label={$i18n.t('Folder actions')}
 				>
 					<FolderMenu
 						onEdit={() => {

@@ -1,6 +1,11 @@
 <script context="module">
 	// Persists across mount/unmount cycles (module-level, not per-instance)
-	let savedPath = '/';
+	let persistedPath = '/';
+
+	const getSavedPath = () => persistedPath;
+	const setSavedPath = (path: string) => {
+		persistedPath = path;
+	};
 </script>
 
 <script lang="ts">
@@ -86,7 +91,7 @@
 	};
 
 	// ── Directory state ──────────────────────────────────────────────────
-	let currentPath = savedPath;
+	let currentPath = getSavedPath();
 	let entries: FileEntry[] = [];
 	let loading = false;
 	let error: string | null = null;
@@ -236,7 +241,7 @@
 				const rawCwd = await getCwd(terminal.url, terminal.key);
 				const cwd = rawCwd ? normalizePath(rawCwd) : null;
 				const dir = cwd ? (cwd.endsWith('/') ? cwd : cwd + '/') : '/';
-				savedPath = dir;
+				setSavedPath(dir);
 				loadDir(dir);
 			})();
 		}
@@ -309,7 +314,7 @@
 		clearFilePreview();
 		clearSelection();
 		currentPath = path;
-		savedPath = path;
+		setSavedPath(path);
 		pushNavHistory(path);
 
 		const result = await listFiles(terminal.url, terminal.key, path);
@@ -736,10 +741,14 @@
 
 		if (!handledDisplayFile) {
 			loading = true;
+			let savedPath = getSavedPath();
 			if (savedPath === '/') {
 				const rawCwd = await getCwd(terminal.url, terminal.key);
 				const cwd = rawCwd ? normalizePath(rawCwd) : null;
-				if (cwd) savedPath = cwd.endsWith('/') ? cwd : cwd + '/';
+				if (cwd) {
+					savedPath = cwd.endsWith('/') ? cwd : cwd + '/';
+					setSavedPath(savedPath);
+				}
 			}
 			loadDir(savedPath);
 		}

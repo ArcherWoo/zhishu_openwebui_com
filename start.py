@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -137,9 +138,13 @@ def terminate_process_gracefully(
     *,
     service_label: str,
     timeout: float = GRACEFUL_STOP_TIMEOUT,
+    use_ctrl_break: bool = False,
 ) -> int | None:
     try:
-        process.terminate()
+        if use_ctrl_break and os.name == 'nt':
+            process.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            process.terminate()
     except ProcessLookupError:
         return process.returncode
 
@@ -159,12 +164,17 @@ def run_managed_process(
     *,
     service_label: str,
     command: list[str] | None = None,
+    use_ctrl_break: bool = False,
 ) -> int:
     try:
         return_code = process.wait()
     except KeyboardInterrupt:
         log(f'收到中断信号，正在优雅关闭 {service_label}...')
-        terminate_process_gracefully(process, service_label=service_label)
+        terminate_process_gracefully(
+            process,
+            service_label=service_label,
+            use_ctrl_break=use_ctrl_break,
+        )
         log(f'{service_label} 已停止。')
         raise SystemExit(130)
 
@@ -1056,6 +1066,12 @@ def launch_open_webui(
     wait: bool = True,
 ):
     command = build_uvicorn_command(prepared.venv_python, args, prepared.runtime_env)
+    managed_creationflags = creationflags
+    use_ctrl_break = False
+
+    if wait and os.name == 'nt':
+        managed_creationflags |= subprocess.CREATE_NEW_PROCESS_GROUP
+        use_ctrl_break = True
 
     # 前台模式下我们显式托管子进程，这样才能在 Ctrl+C 时先优雅关闭，再兜底强制结束。
     log_access_urls(args.host, args.port)
@@ -1068,9 +1084,14 @@ def launch_open_webui(
             env=prepared.runtime_env,
             stdout=stdout,
             stderr=stderr,
-            creationflags=creationflags,
+            creationflags=managed_creationflags,
         )
-        run_managed_process(process, service_label='Open WebUI', command=command)
+        run_managed_process(
+            process,
+            service_label='Open WebUI',
+            command=command,
+            use_ctrl_break=use_ctrl_break,
+        )
         return subprocess.CompletedProcess(command, 0)
 
     return subprocess.Popen(

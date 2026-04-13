@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import socket
+import signal
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -142,6 +143,66 @@ def test_run_managed_process_logs_graceful_shutdown_and_returns_130(capsys):
     captured = capsys.readouterr()
     assert '[start] 收到中断信号，正在优雅关闭 Open WebUI...' in captured.out
     assert '[start] Open WebUI 已停止。' in captured.out
+
+
+def test_terminate_process_gracefully_uses_ctrl_break_for_windows_process_groups(monkeypatch):
+    class DummyProcess:
+        def __init__(self):
+            self.returncode = None
+            self.signals = []
+
+        def send_signal(self, signal_value):
+            self.signals.append(signal_value)
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return 0
+
+    process = DummyProcess()
+
+    monkeypatch.setattr(start.os, 'name', 'nt')
+
+    return_code = start.terminate_process_gracefully(
+        process,
+        service_label='Open WebUI',
+        use_ctrl_break=True,
+    )
+
+    assert return_code == 0
+    assert process.signals == [signal.CTRL_BREAK_EVENT]
+
+
+def test_launch_open_webui_uses_new_process_group_on_windows(monkeypatch):
+    prepared = start.PreparedRuntime(
+        base_python='python',
+        npm_executable='npm',
+        pip_mirror=start.PipMirror(),
+        npm_registry=start.NpmRegistry(),
+        pip_env={},
+        npm_env={},
+        venv_python=Path('C:/fake/python.exe'),
+        runtime_env={},
+    )
+    args = SimpleNamespace(host='0.0.0.0', port=8080)
+    popen_calls = {}
+
+    monkeypatch.setattr(start.os, 'name', 'nt')
+    monkeypatch.setattr(start, 'collect_lan_ipv4_addresses', lambda: [])
+    monkeypatch.setattr(start, 'build_uvicorn_command', lambda *_args, **_kwargs: ['python', '-m', 'uvicorn'])
+    monkeypatch.setattr(start, 'run_managed_process', lambda *args, **kwargs: 0)
+
+    class DummyProcess:
+        returncode = 0
+
+    def fake_popen(*args, **kwargs):
+        popen_calls['creationflags'] = kwargs.get('creationflags', 0)
+        return DummyProcess()
+
+    monkeypatch.setattr(start.subprocess, 'Popen', fake_popen)
+
+    start.launch_open_webui(prepared, args)
+
+    assert popen_calls['creationflags'] & start.subprocess.CREATE_NEW_PROCESS_GROUP
 
 
 def test_uvicorn_runner_returns_130_on_keyboard_interrupt(monkeypatch):

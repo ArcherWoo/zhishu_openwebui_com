@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import { saveAs } from 'file-saver';
 	import { toast } from 'svelte-sonner';
 	import Plus from '$lib/components/icons/Plus.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';

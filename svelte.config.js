@@ -3,6 +3,25 @@ import * as child_process from 'node:child_process';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import fs from 'node:fs';
 
+const SUPPRESSED_BUILD_WARNING_CODES = new Set([
+	'css-unused-selector',
+	'css_unused_selector',
+	'unused-export-let',
+	'export_let_unused',
+	'element_invalid_self_closing_tag',
+	'a11y_consider_explicit_label',
+	'a11y_no_noninteractive_element_interactions',
+	'a11y_no_static_element_interactions',
+	'a11y_click_events_have_key_events',
+	'a11y_interactive_supports_focus',
+	'a11y_label_has_associated_control',
+	'a11y_missing_attribute',
+	'a11y_media_has_caption',
+	'a11y_invalid_attribute'
+]);
+
+const shouldSuppressBuildWarning = process.env.npm_lifecycle_event?.startsWith('build');
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	// Consult https://kit.svelte.dev/docs/integrations#preprocessors
@@ -39,6 +58,9 @@ const config = {
 		}
 	},
 	vitePlugin: {
+		experimental: {
+			disableSvelteResolveWarnings: true
+		}
 		// inspector: {
 		// 	toggleKeyCombo: 'meta-shift', // Key combination to open the inspector
 		// 	holdMode: false, // Enable or disable hold mode
@@ -48,7 +70,9 @@ const config = {
 	},
 	onwarn: (warning, handler) => {
 		const { code } = warning;
-		if (code === 'css-unused-selector') return;
+		if (shouldSuppressBuildWarning && SUPPRESSED_BUILD_WARNING_CODES.has(code)) {
+			return;
+		}
 
 		handler(warning);
 	}

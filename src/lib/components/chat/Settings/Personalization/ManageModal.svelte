@@ -106,7 +106,12 @@
 				{/if}
 			</div>
 
-			<button class="self-center" on:click={() => (show = false)}>
+			<button
+				class="self-center"
+				type="button"
+				aria-label={$i18n.t('Close')}
+				on:click={() => (show = false)}
+			>
 				<XMark className="size-5" />
 			</button>
 		</div>
@@ -128,6 +133,8 @@
 					<div class="self-center pl-1.5 translate-y-[0.5px] bg-transparent">
 						<button
 							class="p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+							type="button"
+							aria-label={$i18n.t('Clear search')}
 							on:click={() => {
 								query = '';
 							}}
@@ -203,9 +210,18 @@
 							{#each sortedMemories as memory (memory.id)}
 								<div
 									class="w-full flex justify-between items-center rounded-xl text-sm py-2 px-3 hover:bg-gray-50 dark:hover:bg-gray-850 transition cursor-pointer"
+									role="button"
+									tabindex="0"
 									on:click={() => {
 										selectedMemory = memory;
 										showEditMemoryModal = true;
+									}}
+									on:keydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											selectedMemory = memory;
+											showEditMemoryModal = true;
+										}
 									}}
 								>
 									<div class="flex-1 min-w-0 pr-2">
@@ -226,6 +242,8 @@
 											<Tooltip content={$i18n.t('Edit')}>
 												<button
 													class="self-center w-fit text-sm p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+													type="button"
+													aria-label={$i18n.t('Edit')}
 													on:click={(e) => {
 														e.stopPropagation();
 														selectedMemory = memory;
@@ -239,6 +257,8 @@
 											<Tooltip content={$i18n.t('Delete')}>
 												<button
 													class="self-center w-fit text-sm p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
+													type="button"
+													aria-label={$i18n.t('Delete')}
 													on:click={(e) => {
 														e.stopPropagation();
 														selectedMemory = memory;
@@ -265,6 +285,7 @@
 			<div class="flex justify-between items-center text-sm mt-2">
 				<button
 					class="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline transition"
+					type="button"
 					on:click={() => {
 						if (memories.length > 0) {
 							showClearConfirmDialog = true;
@@ -276,6 +297,7 @@
 
 				<button
 					class="px-3.5 py-1.5 font-medium hover:bg-black/5 dark:hover:bg-white/5 outline outline-1 outline-gray-100 dark:outline-gray-800 rounded-3xl"
+					type="button"
 					on:click={() => {
 						showAddMemoryModal = true;
 					}}>{$i18n.t('Add Memory')}</button

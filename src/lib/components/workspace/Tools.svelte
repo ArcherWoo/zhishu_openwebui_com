@@ -6,7 +6,7 @@
 	import { onMount, getContext, tick, onDestroy } from 'svelte';
 	const i18n = getContext('i18n');
 
-	import { WEBUI_NAME, config, tools as _tools, user } from '$lib/stores';
+	import { WEBUI_NAME, tools as _tools, user } from '$lib/stores';
 
 	import { goto } from '$app/navigation';
 	import {
@@ -31,7 +31,6 @@
 	import GarbageBin from '../icons/GarbageBin.svelte';
 	import Search from '../icons/Search.svelte';
 	import Plus from '../icons/Plus.svelte';
-	import ChevronRight from '../icons/ChevronRight.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import XMark from '../icons/XMark.svelte';
 	import AddToolMenu from './Tools/AddToolMenu.svelte';
@@ -538,6 +537,7 @@
 											<button
 												class="self-center w-fit text-sm p-1.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
 												type="button"
+												aria-label={$i18n.t('More actions')}
 											>
 												<EllipsisHorizontal className="size-5" />
 											</button>
@@ -561,33 +561,6 @@
 			</div>
 		{/if}
 	</div>
-
-	{#if $config?.features.enable_community_sharing}
-		<div class=" my-16">
-			<div class=" text-xl font-medium mb-1 line-clamp-1">
-				{$i18n.t('Made by Open WebUI Community')}
-			</div>
-
-			<a
-				class=" flex cursor-pointer items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-850 w-full mb-2 px-3.5 py-1.5 rounded-xl transition"
-				href="https://openwebui.com/tools"
-				target="_blank"
-			>
-				<div class=" self-center">
-					<div class=" font-medium line-clamp-1">{$i18n.t('Discover a tool')}</div>
-					<div class=" text-sm line-clamp-1">
-						{$i18n.t('Discover, download, and explore custom tools')}
-					</div>
-				</div>
-
-				<div>
-					<div>
-						<ChevronRight />
-					</div>
-				</div>
-			</a>
-		</div>
-	{/if}
 
 	<DeleteConfirmDialog
 		bind:show={showDeleteConfirm}

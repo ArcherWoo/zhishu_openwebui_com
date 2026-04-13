@@ -27,11 +27,10 @@
 
 	const i18n = getContext('i18n');
 
-	export let show = false;
+export let show = false;
 
-	export let title = 'Chats';
-	export let emptyPlaceholder = '';
-	export let shareUrl = false;
+export let title = 'Chats';
+export let shareUrl = false;
 	export let showUserInfo = false;
 	export let showSearch = true;
 	export let readOnly = false;
@@ -93,6 +92,8 @@
 			<div class=" text-lg font-medium self-center">{title}</div>
 			<button
 				class="self-center"
+				type="button"
+				aria-label={$i18n.t('Close')}
 				on:click={() => {
 					show = false;
 				}}
@@ -141,6 +142,8 @@
 							<div class="self-center pl-1.5 pr-1 translate-y-[0.5px] rounded-l-xl bg-transparent">
 								<button
 									class="p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+									type="button"
+									aria-label={$i18n.t('Clear search')}
 									on:click={() => {
 										query = '';
 										selectedIdx = 0;
@@ -298,6 +301,8 @@
 													<Tooltip content={$i18n.t('Unarchive Chat')}>
 														<button
 															class="self-center w-fit px-1 text-sm rounded-xl"
+															type="button"
+															aria-label={$i18n.t('Unarchive Chat')}
 															on:click={async (e) => {
 																e.stopImmediatePropagation();
 																e.stopPropagation();
@@ -326,6 +331,8 @@
 													<Tooltip content={$i18n.t('Copy Share Link')}>
 														<button
 															class="self-center w-fit px-1 text-sm rounded-xl"
+															type="button"
+															aria-label={$i18n.t('Copy Share Link')}
 															on:click={async (e) => {
 																e.stopImmediatePropagation();
 																e.stopPropagation();
@@ -346,6 +353,10 @@
 												>
 													<button
 														class="self-center w-fit px-1 text-sm rounded-xl"
+														type="button"
+														aria-label={unshareHandler
+															? $i18n.t('Unshare Chat')
+															: $i18n.t('Delete Chat')}
 														on:click={async (e) => {
 															e.stopImmediatePropagation();
 															e.stopPropagation();
