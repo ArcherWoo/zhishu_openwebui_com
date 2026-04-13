@@ -27,7 +27,7 @@
 				})()
 			]);
 
-			if (ollamaConfig) {
+			if (ollamaConfig?.ENABLE_OLLAMA_API) {
 				selected = 'ollama';
 				return;
 			}

@@ -19,6 +19,7 @@
 
 	import { reindexKnowledgeFiles } from '$lib/apis/knowledge';
 	import { deleteAllFiles } from '$lib/apis/files';
+	import { config } from '$lib/stores';
 
 	import ResetUploadDirConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import ResetVectorDBConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
@@ -263,6 +264,12 @@
 			AzureOpenAIVersion = embeddingConfig.azure_openai_config.version;
 		}
 	};
+
+	$: if (!$config?.features?.enable_ollama_api && RAG_EMBEDDING_ENGINE === 'ollama') {
+		RAG_EMBEDDING_ENGINE = '';
+		RAG_EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2';
+	}
+
 	onMount(async () => {
 		await setEmbeddingConfig();
 
@@ -893,7 +900,9 @@
 										}}
 									>
 										<option value="">{$i18n.t('Default (SentenceTransformers)')}</option>
-										<option value="ollama">{$i18n.t('Ollama')}</option>
+										{#if $config?.features?.enable_ollama_api}
+											<option value="ollama">{$i18n.t('Ollama')}</option>
+										{/if}
 										<option value="openai">{$i18n.t('OpenAI')}</option>
 										<option value="azure_openai">{$i18n.t('Azure OpenAI')}</option>
 									</select>

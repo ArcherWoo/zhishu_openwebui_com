@@ -34,9 +34,11 @@
 	};
 
 	onMount(async () => {
-		ollamaVersion = await getOllamaVersion(localStorage.token).catch((error) => {
-			return '';
-		});
+		if ($config?.features?.enable_ollama_api) {
+			ollamaVersion = await getOllamaVersion(localStorage.token).catch((error) => {
+				return '';
+			});
+		}
 
 		if ($config?.features?.enable_version_update_check) {
 			checkForVersionUpdates();

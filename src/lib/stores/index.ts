@@ -271,6 +271,7 @@ type Config = {
 	features: {
 		auth: boolean;
 		auth_trusted_header: boolean;
+		enable_ollama_api?: boolean;
 		enable_api_keys: boolean;
 		enable_signup: boolean;
 		enable_login_form: boolean;
