@@ -515,3 +515,46 @@ def test_run_tracked_command_streams_child_output_in_verbose_mode(monkeypatch, c
     captured = capsys.readouterr()
     assert 'Collecting fastapi' in captured.out
     assert 'Downloading wheel' in captured.out
+
+
+def test_run_tracked_command_heartbeat_can_include_file_count_and_note(monkeypatch, capsys):
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = io.StringIO('')
+            self.returncode = None
+            self._poll_values = iter([None, 0])
+
+        def poll(self):
+            value = next(self._poll_values)
+            if value is not None:
+                self.returncode = value
+            return value
+
+        def wait(self):
+            return self.returncode
+
+    monkeypatch.setattr(
+        prefetch_vendor_deps.subprocess,
+        'Popen',
+        lambda *args, **kwargs: FakeProcess(),
+    )
+    monkeypatch.setattr(prefetch_vendor_deps, 'count_files', lambda _path: 321)
+    clock_ticks = iter([0.0, 11.0, 22.0])
+    monkeypatch.setattr(prefetch_vendor_deps.time, 'monotonic', lambda: next(clock_ticks))
+    monkeypatch.setattr(prefetch_vendor_deps.time, 'sleep', lambda _seconds: None)
+
+    result = prefetch_vendor_deps.run_tracked_command(
+        ['npm', 'ci'],
+        env={},
+        phase='NPM validation',
+        item_label='package-lock closure',
+        verbose=False,
+        heartbeat_seconds=10.0,
+        progress_dir=Path('vendor/npm'),
+        heartbeat_note='file count may not change during validation',
+    )
+
+    assert result.returncode == 0
+    captured = capsys.readouterr()
+    assert 'files=321' in captured.out
+    assert 'file count may not change during validation' in captured.out

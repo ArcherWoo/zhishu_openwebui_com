@@ -107,6 +107,8 @@ def run_tracked_command(
     total: int | None = None,
     verbose: bool = False,
     heartbeat_seconds: float = 10.0,
+    progress_dir: Path | None = None,
+    heartbeat_note: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     step_label = format_step_label(phase, item_label, index=index, total=total)
     log(f'{step_label} -> starting')
@@ -144,7 +146,12 @@ def run_tracked_command(
     while return_code is None:
         now = time.monotonic()
         if now - last_heartbeat_at >= heartbeat_seconds:
-            log(f'{step_label} -> still running ({int(now - started_at)}s elapsed)')
+            details = [f'{int(now - started_at)}s elapsed']
+            if progress_dir is not None:
+                details.append(f'files={count_files(progress_dir)}')
+            if heartbeat_note:
+                details.append(heartbeat_note)
+            log(f"{step_label} -> still running ({', '.join(details)})")
             last_heartbeat_at = now
 
         time.sleep(0.2)
@@ -154,10 +161,13 @@ def run_tracked_command(
     reader_thread.join(timeout=1)
 
     elapsed = time.monotonic() - started_at
+    completion_suffix = ''
+    if progress_dir is not None:
+        completion_suffix = f', files={count_files(progress_dir)}'
     if return_code == 0:
-        log(f'{step_label} -> completed in {elapsed:.1f}s')
+        log(f'{step_label} -> completed in {elapsed:.1f}s{completion_suffix}')
     else:
-        log(f'{step_label} -> failed in {elapsed:.1f}s (exit {return_code})')
+        log(f'{step_label} -> failed in {elapsed:.1f}s{completion_suffix} (exit {return_code})')
 
     return subprocess.CompletedProcess(
         command,
@@ -331,6 +341,7 @@ def prefetch_python_dependencies(
             index=index,
             total=len(direct_entries),
             verbose=verbose,
+            progress_dir=vendor_dir,
         )
         if probe_result.returncode == 0:
             direct_success.append(requirement)
@@ -358,6 +369,7 @@ def prefetch_python_dependencies(
             index=index,
             total=len(direct_entries),
             verbose=verbose,
+            progress_dir=vendor_dir,
         )
         if bundle_result.returncode != 0:
             bundle_failures.append(
@@ -379,6 +391,8 @@ def prefetch_python_dependencies(
             phase='Python online validation',
             item_label='backend requirements closure',
             verbose=verbose,
+            progress_dir=vendor_dir,
+            heartbeat_note='file count may not change during validation',
         )
         offline_validation_complete = False
         offline_validation_error = 'dry-run 模式未执行离线 vendor 完整性校验'
@@ -398,6 +412,7 @@ def prefetch_python_dependencies(
             phase='Python full download',
             item_label='backend requirements closure',
             verbose=verbose,
+            progress_dir=vendor_dir,
         )
         offline_validation_result = run_tracked_command(
             build_python_offline_validation_command(python_executable, vendor_dir),
@@ -405,6 +420,8 @@ def prefetch_python_dependencies(
             phase='Python offline validation',
             item_label='vendor/python completeness',
             verbose=verbose,
+            progress_dir=vendor_dir,
+            heartbeat_note='file count may not change during validation',
         )
         offline_validation_complete = offline_validation_result.returncode == 0
         offline_validation_error = (
@@ -476,6 +493,7 @@ def prefetch_npm_dependencies(
             index=index,
             total=len(package_specs),
             verbose=verbose,
+            progress_dir=vendor_dir,
         )
 
         if result.returncode == 0:
@@ -501,6 +519,8 @@ def prefetch_npm_dependencies(
         phase='NPM validation',
         item_label='package-lock closure',
         verbose=verbose,
+        progress_dir=vendor_dir,
+        heartbeat_note='file count may not change during validation',
     )
 
     return {
@@ -710,9 +730,11 @@ def main(argv: list[str] | None = None) -> int:
         },
     }
 
+    log('Final phase: writing JSON/Markdown reports')
     write_reports(report, report_json=report_json, report_md=report_md)
     log(f'report json: {report_json}')
     log(f'report md: {report_md}')
+    log('Final phase: report writing complete')
 
     start.log(f'预下载报告已写入: {report_json}')
     start.log(f'可读报告已写入: {report_md}')

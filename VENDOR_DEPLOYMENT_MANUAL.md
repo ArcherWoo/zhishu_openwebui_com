@@ -196,6 +196,9 @@ python start.py
 - 现在脚本会输出 `[prefetch]` 前缀的实时进度日志。
 - 每个 Python / NPM 阶段开始时，都会显示当前阶段和正在处理的包。
 - 如果某个下载或校验步骤执行很久，脚本会定时打印 `still running` 心跳，表示还在继续，不是卡死。
+- 心跳里会尽量带上 `files=...` 文件数，方便你判断当前是不是还在往 vendor 目录写内容。
+- 如果日志显示的是 `NPM validation` 或 `Python ... validation`，这类完整性校验阶段本来就可能长时间不增加文件数；这通常不是 md 报告卡住，而是在做依赖闭环检查。
+- 报告写入阶段现在会单独打印 `Final phase: writing JSON/Markdown reports`，所以你可以直接区分“还在校验”还是“已经开始写报告”。
 - 如果你想看 `pip` / `npm` 的原始输出，可以使用：
 
 ```bash
