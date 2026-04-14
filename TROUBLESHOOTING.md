@@ -10,13 +10,7 @@ The Open WebUI system is designed to streamline interactions between the client 
 
 ## Open WebUI: Server Connection Error
 
-If you're experiencing connection issues, it’s often due to the WebUI docker container not being able to reach the Ollama server at 127.0.0.1:11434 (host.docker.internal:11434) inside the container . Use the `--network=host` flag in your docker command to resolve this. Note that the port changes from 3000 to 8080, resulting in the link: `http://localhost:8080`.
-
-**Example Docker Command**:
-
-```bash
-docker run -d --network=host -v open-webui:/app/backend/data -e OLLAMA_BASE_URL=http://127.0.0.1:11434 --name open-webui --restart always ghcr.io/open-webui/open-webui:main
-```
+If you're experiencing connection issues, confirm that Ollama is reachable at the `OLLAMA_BASE_URL` configured in Open WebUI. On a local machine, a working default is usually `http://127.0.0.1:11434` or `http://localhost:11434`.
 
 ### Error on Slow Responses for Ollama
 
@@ -29,7 +23,7 @@ Open WebUI has a default timeout of 5 minutes for Ollama to finish generating th
 **Troubleshooting Steps**:
 
 1. **Verify Ollama URL Format**:
-   - When running the Web UI container, ensure the `OLLAMA_BASE_URL` is correctly set. (e.g., `http://192.168.1.1:11434` for different host setups).
+   - Ensure the `OLLAMA_BASE_URL` is correctly set for your machine or remote server (e.g., `http://192.168.1.1:11434` for different host setups).
    - In the Open WebUI, navigate to "Settings" > "General".
    - Confirm that the Ollama Server URL is correctly set to `[OLLAMA URL]` (e.g., `http://localhost:11434`).
 

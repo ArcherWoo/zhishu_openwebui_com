@@ -265,6 +265,22 @@ def test_build_npm_install_commands_use_vendor_cache_first_strategy():
     ]
 
 
+def test_build_npm_env_disables_cypress_binary_download_by_default(monkeypatch):
+    monkeypatch.delenv('CYPRESS_INSTALL_BINARY', raising=False)
+
+    env = start.build_npm_env(start.NpmRegistry())
+
+    assert env['CYPRESS_INSTALL_BINARY'] == '0'
+
+
+def test_build_npm_env_preserves_explicit_cypress_install_binary(monkeypatch):
+    monkeypatch.setenv('CYPRESS_INSTALL_BINARY', '1')
+
+    env = start.build_npm_env(start.NpmRegistry())
+
+    assert env['CYPRESS_INSTALL_BINARY'] == '1'
+
+
 def test_parse_requirements_entries_skips_comments_and_blank_lines():
     with tempfile.TemporaryDirectory() as temp_dir:
         requirements = Path(temp_dir) / 'requirements.txt'

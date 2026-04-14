@@ -111,7 +111,6 @@ from open_webui.config import (
 )
 from open_webui.env import (
     DEVICE_TYPE,
-    DOCKER,
     RAG_EMBEDDING_TIMEOUT,
     SENTENCE_TRANSFORMERS_BACKEND,
     SENTENCE_TRANSFORMERS_MODEL_KWARGS,
@@ -174,7 +173,6 @@ def get_rf(
 
                 rf = ColBERT(
                     get_model_path(reranking_model, auto_update),
-                    env='docker' if DOCKER else None,
                 )
 
             except Exception as e:

@@ -150,10 +150,8 @@ all = [
     "pgvector==0.4.2",
     "moto[s3]>=5.0.26",
     "gcp-storage-emulator>=2024.8.3",
-    "docker~=7.1.0",
     "pytest~=8.3.2",
-    "pytest-docker~=3.2.5",
-    "playwright==1.58.0", # Caution: version must match docker-compose.playwright.yaml - Update the docker-compose.yaml if necessary
+    "playwright==1.58.0",
     "elasticsearch==9.3.0",
 
     "qdrant-client==1.17.0",
@@ -192,7 +190,6 @@ pattern = '"version":\s*"(?P<version>[^"]+)"'
 [tool.hatch.build.targets.wheel]
 sources = ["backend"]
 exclude = [
-    ".dockerignore",
     ".gitignore",
     ".webui_secret_key",
     "dev.sh",

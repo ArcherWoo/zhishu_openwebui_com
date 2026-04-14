@@ -1,6 +1,4 @@
 # Minimal requirements for backend to run
-# WIP: use this as a reference to build a minimal docker image
-
 fastapi==0.135.1
 uvicorn[standard]==0.41.0
 pydantic==2.12.5

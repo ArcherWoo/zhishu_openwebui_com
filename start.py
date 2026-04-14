@@ -475,6 +475,7 @@ def build_npm_env(registry: NpmRegistry) -> dict[str, str]:
     if registry.registry:
         env['npm_config_registry'] = registry.registry
         env['NPM_CONFIG_REGISTRY'] = registry.registry
+    env.setdefault('CYPRESS_INSTALL_BINARY', '0')
     return env
 
 

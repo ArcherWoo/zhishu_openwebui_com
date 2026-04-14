@@ -30,11 +30,9 @@ Noticed something off? Have an idea? Check our [Issues tab](https://github.com/o
 
 ### 🧭 Scope of Support
 
-We've noticed an uptick in issues not directly related to Open WebUI but rather to the environment it's run in, especially Docker setups. While we strive to support Docker deployment, understanding Docker fundamentals is crucial for a smooth experience.
+We've noticed an uptick in issues not directly related to Open WebUI but rather to the surrounding environment it runs in. When troubleshooting setup issues, please verify the application logs, local network access, Python environment, and reverse proxy configuration before opening an issue.
 
-- **Docker Deployment Support**: Open WebUI supports Docker deployment. Familiarity with Docker is assumed. For Docker basics, please refer to the [official Docker documentation](https://docs.docker.com/get-started/overview/).
-
-- **Advanced Configurations**: Setting up reverse proxies for HTTPS and managing Docker deployments requires foundational knowledge. There are numerous online resources available to learn these skills. Ensuring you have this knowledge will greatly enhance your experience with Open WebUI and similar projects.
+- **Advanced Configurations**: Setting up reverse proxies for HTTPS and managing custom deployments requires foundational knowledge. There are numerous online resources available to learn these skills. Ensuring you have this knowledge will greatly enhance your experience with Open WebUI and similar projects.
 
 - **Check the documentation and help improve it**: [Our documentation](https://docs.openwebui.com) has ever growing troubleshooting guides and detailed installation tutorials. Please verify if it is of help to your issue and help expand it by submitting issues and PRs on our [Docs Repository](https://github.com/open-webui/docs).
 

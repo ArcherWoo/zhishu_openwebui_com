@@ -41,10 +41,8 @@ try:
 except ImportError:
     print('dotenv not installed, skipping...')
 
-DOCKER = os.environ.get('DOCKER', 'False').lower() == 'true'
-
 # device type embedding models - "cpu" (default), "cuda" (nvidia gpu required) or "mps" (apple silicon) - choosing this right can lead to better performance
-USE_CUDA = os.environ.get('USE_CUDA_DOCKER', 'false')
+USE_CUDA = os.environ.get('USE_CUDA', 'false')
 
 if USE_CUDA.lower() == 'true':
     try:
@@ -53,8 +51,8 @@ if USE_CUDA.lower() == 'true':
         assert torch.cuda.is_available(), 'CUDA not available'
         DEVICE_TYPE = 'cuda'
     except Exception as e:
-        cuda_error = f'Error when testing CUDA but USE_CUDA_DOCKER is true. Resetting USE_CUDA_DOCKER to false: {e}'
-        os.environ['USE_CUDA_DOCKER'] = 'false'
+        cuda_error = f'Error when testing CUDA but USE_CUDA is true. Resetting USE_CUDA to false: {e}'
+        os.environ['USE_CUDA'] = 'false'
         USE_CUDA = 'false'
         DEVICE_TYPE = 'cpu'
 else:
