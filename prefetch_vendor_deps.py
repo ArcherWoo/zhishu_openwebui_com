@@ -4,6 +4,8 @@ import argparse
 import json
 import subprocess
 import sys
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,6 +13,10 @@ import start
 
 
 ROOT = Path(__file__).resolve().parent
+
+
+def log(message: str) -> None:
+    print(f'[prefetch] {message}', flush=True)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -22,6 +28,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--report-json', default=str(start.VENDOR_REPORT_JSON))
     parser.add_argument('--report-md', default=str(start.VENDOR_REPORT_MD))
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--allow-unsupported-python', action='store_true')
     return parser.parse_args(argv)
 
@@ -78,20 +85,85 @@ def collect_npm_package_specs(lock_data: dict) -> list[str]:
     return sorted(specs)
 
 
-def run_capture(
+def format_step_label(
+    phase: str,
+    item_label: str,
+    *,
+    index: int | None = None,
+    total: int | None = None,
+) -> str:
+    progress = f' [{index}/{total}]' if index is not None and total is not None else ''
+    return f'{phase}{progress} {item_label}'.strip()
+
+
+def run_tracked_command(
     command: list[str],
     *,
     env: dict[str, str],
     cwd: Path = ROOT,
+    phase: str,
+    item_label: str,
+    index: int | None = None,
+    total: int | None = None,
+    verbose: bool = False,
+    heartbeat_seconds: float = 10.0,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    step_label = format_step_label(phase, item_label, index=index, total=total)
+    log(f'{step_label} -> starting')
+
+    process = subprocess.Popen(
         command,
         cwd=str(cwd),
         env=env,
         text=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+    )
+
+    output_chunks: list[str] = []
+
+    def _reader() -> None:
+        if not process.stdout:
+            return
+
+        for line in iter(process.stdout.readline, ''):
+            output_chunks.append(line)
+            if verbose:
+                print(line, end='', flush=True)
+
+        process.stdout.close()
+
+    reader_thread = threading.Thread(target=_reader, daemon=True)
+    reader_thread.start()
+
+    started_at = time.monotonic()
+    last_heartbeat_at = started_at
+    return_code = process.poll()
+
+    while return_code is None:
+        now = time.monotonic()
+        if now - last_heartbeat_at >= heartbeat_seconds:
+            log(f'{step_label} -> still running ({int(now - started_at)}s elapsed)')
+            last_heartbeat_at = now
+
+        time.sleep(0.2)
+        return_code = process.poll()
+
+    process.wait()
+    reader_thread.join(timeout=1)
+
+    elapsed = time.monotonic() - started_at
+    if return_code == 0:
+        log(f'{step_label} -> completed in {elapsed:.1f}s')
+    else:
+        log(f'{step_label} -> failed in {elapsed:.1f}s (exit {return_code})')
+
+    return subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=''.join(output_chunks),
+        stderr='',
     )
 
 
@@ -237,6 +309,7 @@ def prefetch_python_dependencies(
     vendor_dir: Path,
     pip_env: dict[str, str],
     dry_run: bool,
+    verbose: bool,
 ) -> dict:
     vendor_dir.mkdir(parents=True, exist_ok=True)
 
@@ -245,10 +318,19 @@ def prefetch_python_dependencies(
     direct_failures: list[dict[str, str]] = []
     bundle_failures: list[dict[str, str]] = []
 
-    for requirement in direct_entries:
-        probe_result = run_capture(
+    log(
+        f'Python phase 1/2: requirement sweep (direct probe + dependency bundle, {len(direct_entries)} items)'
+    )
+
+    for index, requirement in enumerate(direct_entries, start=1):
+        probe_result = run_tracked_command(
             build_python_probe_command(python_executable, requirement),
             env=pip_env,
+            phase='Python direct probe',
+            item_label=requirement,
+            index=index,
+            total=len(direct_entries),
+            verbose=verbose,
         )
         if probe_result.returncode == 0:
             direct_success.append(requirement)
@@ -268,7 +350,15 @@ def prefetch_python_dependencies(
             if dry_run
             else build_python_download_command(python_executable, requirement, vendor_dir)
         )
-        bundle_result = run_capture(bundle_command, env=pip_env)
+        bundle_result = run_tracked_command(
+            bundle_command,
+            env=pip_env,
+            phase='Python dependency bundle' if dry_run else 'Python dependency download',
+            item_label=requirement,
+            index=index,
+            total=len(direct_entries),
+            verbose=verbose,
+        )
         if bundle_result.returncode != 0:
             bundle_failures.append(
                 {
@@ -280,15 +370,20 @@ def prefetch_python_dependencies(
                 }
             )
 
+    log('Python phase 2/2: full dependency closure validation')
+
     if dry_run:
-        full_result = run_capture(
+        full_result = run_tracked_command(
             build_python_online_validation_command(python_executable),
             env=pip_env,
+            phase='Python online validation',
+            item_label='backend requirements closure',
+            verbose=verbose,
         )
         offline_validation_complete = False
         offline_validation_error = 'dry-run 模式未执行离线 vendor 完整性校验'
     else:
-        full_result = run_capture(
+        full_result = run_tracked_command(
             [
                 python_executable,
                 '-m',
@@ -300,10 +395,16 @@ def prefetch_python_dependencies(
                 str(start.REQUIREMENTS_FILE),
             ],
             env=pip_env,
+            phase='Python full download',
+            item_label='backend requirements closure',
+            verbose=verbose,
         )
-        offline_validation_result = run_capture(
+        offline_validation_result = run_tracked_command(
             build_python_offline_validation_command(python_executable, vendor_dir),
             env=pip_env,
+            phase='Python offline validation',
+            item_label='vendor/python completeness',
+            verbose=verbose,
         )
         offline_validation_complete = offline_validation_result.returncode == 0
         offline_validation_error = (
@@ -331,6 +432,7 @@ def prefetch_npm_dependencies(
     vendor_dir: Path,
     npm_env: dict[str, str],
     dry_run: bool,
+    verbose: bool,
 ) -> dict:
     vendor_dir.mkdir(parents=True, exist_ok=True)
 
@@ -358,8 +460,10 @@ def prefetch_npm_dependencies(
     successful: list[str] = []
     failures: list[dict[str, str]] = []
 
-    for spec in package_specs:
-        result = run_capture(
+    log(f'NPM phase 1/2: cache prefetch ({len(package_specs)} items)')
+
+    for index, spec in enumerate(package_specs, start=1):
+        result = run_tracked_command(
             build_npm_cache_add_command(
                 npm_executable,
                 spec,
@@ -367,6 +471,11 @@ def prefetch_npm_dependencies(
                 dry_run=dry_run,
             ),
             env=npm_env,
+            phase='NPM cache add',
+            item_label=spec,
+            index=index,
+            total=len(package_specs),
+            verbose=verbose,
         )
 
         if result.returncode == 0:
@@ -380,13 +489,18 @@ def prefetch_npm_dependencies(
                 }
             )
 
-    validation_result = run_capture(
+    log('NPM phase 2/2: vendor cache validation')
+
+    validation_result = run_tracked_command(
         build_npm_validation_command(
             npm_executable,
             vendor_dir,
             dry_run=dry_run,
         ),
         env=npm_env,
+        phase='NPM validation',
+        item_label='package-lock closure',
+        verbose=verbose,
     )
 
     return {
@@ -545,6 +659,7 @@ def main(argv: list[str] | None = None) -> int:
 
     npm_registry = start.discover_npm_registry(npm_executable) if npm_executable else start.NpmRegistry()
     npm_env = start.build_npm_env(npm_registry)
+    log(f"mode={'dry-run' if args.dry_run else 'download'} verbose={'on' if args.verbose else 'off'}")
 
     start.log(f'Python 预下载目录: {python_vendor_dir}')
     start.log(f'NPM 预下载目录: {npm_vendor_dir}')
@@ -562,12 +677,14 @@ def main(argv: list[str] | None = None) -> int:
         vendor_dir=python_vendor_dir,
         pip_env=pip_env,
         dry_run=args.dry_run,
+        verbose=args.verbose,
     )
     npm_report = prefetch_npm_dependencies(
         npm_executable,
         vendor_dir=npm_vendor_dir,
         npm_env=npm_env,
         dry_run=args.dry_run,
+        verbose=args.verbose,
     )
 
     report = {
@@ -594,6 +711,8 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     write_reports(report, report_json=report_json, report_md=report_md)
+    log(f'report json: {report_json}')
+    log(f'report md: {report_md}')
 
     start.log(f'预下载报告已写入: {report_json}')
     start.log(f'可读报告已写入: {report_md}')

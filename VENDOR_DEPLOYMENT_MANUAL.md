@@ -190,3 +190,15 @@ python start.py
 - 看 `vendor/report.md`
 - 把缺失包在外网补齐
 - 最后在内网机器执行 `python start.py`
+
+## 新版终端反馈
+
+- 现在脚本会输出 `[prefetch]` 前缀的实时进度日志。
+- 每个 Python / NPM 阶段开始时，都会显示当前阶段和正在处理的包。
+- 如果某个下载或校验步骤执行很久，脚本会定时打印 `still running` 心跳，表示还在继续，不是卡死。
+- 如果你想看 `pip` / `npm` 的原始输出，可以使用：
+
+```bash
+python prefetch_vendor_deps.py --verbose
+python prefetch_vendor_deps.py --dry-run --verbose
+```

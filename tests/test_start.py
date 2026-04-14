@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import socket
 import signal
 import tempfile
@@ -423,3 +424,94 @@ def test_write_reports_includes_manual_recovery_commands():
         assert '手工补包命令' in markdown
         assert 'python -m pip download --dest vendor/python "fastapi==0.1.0"' in markdown
         assert 'npm cache add "react@18.3.1" --cache vendor/npm' in markdown
+
+
+def test_prefetch_parse_args_supports_verbose_flag():
+    args = prefetch_vendor_deps.parse_args(['--dry-run', '--verbose'])
+
+    assert args.dry_run is True
+    assert args.verbose is True
+
+
+def test_run_tracked_command_logs_progress_and_heartbeat(monkeypatch, capsys):
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = io.StringIO('')
+            self.returncode = None
+            self._poll_values = iter([None, None, 0])
+
+        def poll(self):
+            value = next(self._poll_values)
+            if value is not None:
+                self.returncode = value
+            return value
+
+        def wait(self):
+            return self.returncode
+
+    monkeypatch.setattr(
+        prefetch_vendor_deps.subprocess,
+        'Popen',
+        lambda *args, **kwargs: FakeProcess(),
+    )
+
+    clock_ticks = iter([0.0, 11.0, 22.0, 33.0])
+    monkeypatch.setattr(prefetch_vendor_deps.time, 'monotonic', lambda: next(clock_ticks))
+    monkeypatch.setattr(prefetch_vendor_deps.time, 'sleep', lambda _seconds: None)
+
+    result = prefetch_vendor_deps.run_tracked_command(
+        ['python', '-m', 'pip', 'download', 'fastapi'],
+        env={},
+        phase='Python direct probe',
+        item_label='fastapi==0.1.0',
+        index=1,
+        total=3,
+        verbose=False,
+        heartbeat_seconds=10.0,
+    )
+
+    assert result.returncode == 0
+    captured = capsys.readouterr()
+    assert 'Python direct probe [1/3] fastapi==0.1.0' in captured.out
+    assert 'still running' in captured.out
+    assert 'completed in' in captured.out
+
+
+def test_run_tracked_command_streams_child_output_in_verbose_mode(monkeypatch, capsys):
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = io.StringIO('Collecting fastapi\nDownloading wheel\n')
+            self.returncode = None
+            self._poll_values = iter([0])
+
+        def poll(self):
+            value = next(self._poll_values)
+            self.returncode = value
+            return value
+
+        def wait(self):
+            return self.returncode
+
+    monkeypatch.setattr(
+        prefetch_vendor_deps.subprocess,
+        'Popen',
+        lambda *args, **kwargs: FakeProcess(),
+    )
+    monkeypatch.setattr(prefetch_vendor_deps.time, 'monotonic', lambda: 0.0)
+    monkeypatch.setattr(prefetch_vendor_deps.time, 'sleep', lambda _seconds: None)
+
+    result = prefetch_vendor_deps.run_tracked_command(
+        ['python', '-m', 'pip', 'download', 'fastapi'],
+        env={},
+        phase='Python bundle download',
+        item_label='fastapi==0.1.0',
+        index=2,
+        total=4,
+        verbose=True,
+        heartbeat_seconds=10.0,
+    )
+
+    assert result.returncode == 0
+    captured = capsys.readouterr()
+    assert 'Collecting fastapi' in captured.out
+    assert 'Downloading wheel' in captured.out
