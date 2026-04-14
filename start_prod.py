@@ -62,6 +62,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--force-frontend-build', action='store_true')
     parser.add_argument('--enable-base-model-cache', action='store_true')
     parser.add_argument('--offline', action='store_true')
+    parser.add_argument('--online', action='store_true')
     parser.add_argument('--detach', action='store_true')
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--allow-unsupported-python', action='store_true')
@@ -92,6 +93,7 @@ def build_start_namespace(args: argparse.Namespace) -> argparse.Namespace:
         force_node_install=args.force_node_install,
         force_frontend_build=args.force_frontend_build,
         enable_base_model_cache=args.enable_base_model_cache,
+        online=args.online,
         allow_unsupported_python=args.allow_unsupported_python,
     )
 
@@ -108,9 +110,22 @@ def apply_production_defaults(args: argparse.Namespace) -> None:
     os.environ.setdefault('FORWARDED_ALLOW_IPS', args.forwarded_allow_ips)
     os.environ.setdefault('UVICORN_WORKERS', args.workers)
     os.environ.setdefault('UVICORN_WS', args.ws_mode)
+    os.environ.setdefault('EMBEDDING_MODEL_DIR', str((ROOT / 'embedding_model').resolve()))
+    os.environ.setdefault('SENTENCE_TRANSFORMERS_HOME', os.environ['EMBEDDING_MODEL_DIR'])
+    os.environ.setdefault('HF_HOME', os.environ['EMBEDDING_MODEL_DIR'])
 
     if not args.enable_base_model_cache:
         os.environ.setdefault('ENABLE_BASE_MODELS_CACHE', 'False')
+
+    if args.online:
+        os.environ.pop('OFFLINE_MODE', None)
+        os.environ.pop('HF_HUB_OFFLINE', None)
+        os.environ.pop('TRANSFORMERS_OFFLINE', None)
+    else:
+        os.environ.setdefault('OFFLINE_MODE', 'True')
+        os.environ.setdefault('HF_HUB_OFFLINE', '1')
+        os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
+        os.environ.setdefault('HF_HUB_DISABLE_TELEMETRY', '1')
 
     if args.offline:
         os.environ.setdefault('OFFLINE_MODE', 'True')
@@ -183,6 +198,12 @@ def exported_environment() -> dict[str, str]:
         'RAG_EMBEDDING_MODEL_AUTO_UPDATE',
         'RAG_RERANKING_MODEL_AUTO_UPDATE',
         'OFFLINE_MODE',
+        'HF_HUB_OFFLINE',
+        'TRANSFORMERS_OFFLINE',
+        'HF_HUB_DISABLE_TELEMETRY',
+        'EMBEDDING_MODEL_DIR',
+        'SENTENCE_TRANSFORMERS_HOME',
+        'HF_HOME',
         'FORWARDED_ALLOW_IPS',
         'UVICORN_WORKERS',
         'UVICORN_WS',
@@ -245,6 +266,8 @@ def build_child_command(args: argparse.Namespace, venv_python: Path) -> list[str
         command.append('--enable-base-model-cache')
     if args.offline:
         command.append('--offline')
+    if args.online:
+        command.append('--online')
     if args.allow_unsupported_python:
         command.append('--allow-unsupported-python')
 

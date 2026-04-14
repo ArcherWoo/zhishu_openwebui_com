@@ -4,6 +4,7 @@ import io
 import socket
 import signal
 import tempfile
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -83,7 +84,7 @@ def test_launch_open_webui_logs_browser_and_lan_urls(monkeypatch, capsys):
     class DummyProcess:
         returncode = 0
 
-        def wait(self, timeout=None):
+        def poll(self):
             return 0
 
     monkeypatch.setattr(start.subprocess, 'Popen', lambda *args, **kwargs: DummyProcess())
@@ -122,10 +123,14 @@ def test_run_managed_process_logs_graceful_shutdown_and_returns_130(capsys):
         def __init__(self):
             self.returncode = None
             self.terminated = False
+            self.poll_calls = 0
 
-        def wait(self, timeout=None):
-            if not self.terminated:
+        def poll(self):
+            self.poll_calls += 1
+            if self.poll_calls == 1:
                 raise KeyboardInterrupt
+            if not self.terminated:
+                return None
             self.returncode = 0
             return 0
 
@@ -134,6 +139,10 @@ def test_run_managed_process_logs_graceful_shutdown_and_returns_130(capsys):
 
         def kill(self):
             self.terminated = True
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return 0
 
     process = DummyProcess()
 
@@ -171,6 +180,169 @@ def test_terminate_process_gracefully_uses_ctrl_break_for_windows_process_groups
 
     assert return_code == 0
     assert process.signals == [signal.CTRL_BREAK_EVENT]
+
+
+def test_terminate_process_gracefully_falls_back_to_taskkill_tree_on_windows_timeout(monkeypatch):
+    class DummyProcess:
+        def __init__(self):
+            self.returncode = None
+            self.pid = 4321
+            self.signals = []
+
+        def send_signal(self, signal_value):
+            self.signals.append(signal_value)
+
+        def wait(self, timeout=None):
+            raise start.subprocess.TimeoutExpired(cmd='python', timeout=timeout)
+
+        def kill(self):
+            self.returncode = -9
+
+    taskkill_calls = []
+
+    def fake_run(cmd, **kwargs):
+        taskkill_calls.append(cmd)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(start.os, 'name', 'nt')
+    monkeypatch.setattr(start.subprocess, 'run', fake_run)
+
+    process = DummyProcess()
+
+    return_code = start.terminate_process_gracefully(
+        process,
+        service_label='Open WebUI',
+        use_ctrl_break=True,
+    )
+
+    assert process.signals == [signal.CTRL_BREAK_EVENT]
+    assert taskkill_calls == [['taskkill', '/PID', '4321', '/T', '/F']]
+    assert return_code == process.returncode
+
+
+def test_build_managed_signal_handler_only_marks_shutdown_requested(capsys):
+    shutdown_requested = threading.Event()
+    shutdown_state = {}
+
+    handler = start.build_managed_signal_handler(
+        object(),
+        service_label='Open WebUI',
+        use_ctrl_break=True,
+        shutdown_requested=shutdown_requested,
+        shutdown_state=shutdown_state,
+    )
+
+    handler(signal.SIGINT, None)
+
+    assert shutdown_requested.is_set() is True
+    assert shutdown_state == {'signal_name': 'SIGINT'}
+    captured = capsys.readouterr()
+    assert '[start] 收到 SIGINT 信号，正在优雅关闭 Open WebUI...' in captured.out
+
+
+def test_build_managed_console_handler_only_marks_shutdown_flag(capsys):
+    shutdown_requested = threading.Event()
+    shutdown_state = {}
+
+    handler = start.build_managed_console_handler(
+        object(),
+        service_label='Open WebUI',
+        use_ctrl_break=True,
+        shutdown_requested=shutdown_requested,
+        shutdown_state=shutdown_state,
+    )
+
+    handled = handler(0)
+
+    assert handled is True
+    assert shutdown_requested.is_set() is True
+    assert shutdown_state == {'signal_name': 'CTRL_C_EVENT'}
+    captured = capsys.readouterr()
+    assert '[start] 收到 CTRL_C_EVENT，正在优雅关闭 Open WebUI...' in captured.out
+
+
+def test_run_managed_process_polls_instead_of_blocking_wait(monkeypatch):
+    class DummyProcess:
+        def __init__(self):
+            self.returncode = None
+            self.poll_calls = 0
+
+        def poll(self):
+            self.poll_calls += 1
+            if self.poll_calls < 3:
+                return None
+            self.returncode = 0
+            return 0
+
+        def wait(self, timeout=None):
+            raise AssertionError('run_managed_process should not call wait() directly')
+
+    sleep_calls = []
+
+    monkeypatch.setattr(start.time, 'sleep', lambda seconds: sleep_calls.append(seconds))
+
+    process = DummyProcess()
+
+    assert start.run_managed_process(process, service_label='Open WebUI') == 0
+    assert process.poll_calls == 3
+    assert sleep_calls == [
+        start.MANAGED_PROCESS_POLL_INTERVAL,
+        start.MANAGED_PROCESS_POLL_INTERVAL,
+    ]
+
+
+def test_run_managed_process_handles_windows_console_shutdown_request(monkeypatch):
+    class DummyProcess:
+        def __init__(self):
+            self.returncode = None
+
+        def poll(self):
+            return None
+
+    installed_handler = {}
+    restored_callbacks = []
+    terminate_calls = []
+
+    def fake_install_windows_console_handler(handler):
+        installed_handler['handler'] = handler
+        return 'console-callback'
+
+    def fake_restore_windows_console_handler(callback):
+        restored_callbacks.append(callback)
+
+    def fake_terminate(*args, **kwargs):
+        terminate_calls.append((args, kwargs))
+        return 0
+
+    def fake_sleep(_seconds):
+        installed_handler['handler'](0)
+
+    monkeypatch.setattr(start.os, 'name', 'nt')
+    monkeypatch.setattr(start, 'install_windows_console_handler', fake_install_windows_console_handler)
+    monkeypatch.setattr(start, 'restore_windows_console_handler', fake_restore_windows_console_handler)
+    monkeypatch.setattr(start, 'terminate_process_gracefully', fake_terminate)
+    monkeypatch.setattr(start.time, 'sleep', fake_sleep)
+
+    process = DummyProcess()
+
+    with pytest.raises(SystemExit) as exc_info:
+        start.run_managed_process(
+            process,
+            service_label='Open WebUI',
+            use_ctrl_break=True,
+        )
+
+    assert exc_info.value.code == 130
+    assert terminate_calls == [
+        (
+            (process,),
+            {
+                'service_label': 'Open WebUI',
+                'use_ctrl_break': True,
+            },
+        )
+    ]
+    assert restored_callbacks == ['console-callback']
 
 
 def test_launch_open_webui_uses_new_process_group_on_windows(monkeypatch):
@@ -279,6 +451,60 @@ def test_build_npm_env_preserves_explicit_cypress_install_binary(monkeypatch):
     env = start.build_npm_env(start.NpmRegistry())
 
     assert env['CYPRESS_INSTALL_BINARY'] == '1'
+
+
+def test_build_runtime_env_defaults_to_offline_huggingface_mode(monkeypatch):
+    args = SimpleNamespace(host='0.0.0.0', port=8080, enable_base_model_cache=False, online=False)
+
+    monkeypatch.delenv('OFFLINE_MODE', raising=False)
+    monkeypatch.delenv('HF_HUB_OFFLINE', raising=False)
+    monkeypatch.delenv('TRANSFORMERS_OFFLINE', raising=False)
+
+    env = start.build_runtime_env(
+        Path('C:/fake/python.exe'),
+        args,
+        start.PipMirror(),
+        start.NpmRegistry(),
+    )
+
+    assert env['OFFLINE_MODE'] == 'True'
+    assert env['HF_HUB_OFFLINE'] == '1'
+    assert env['TRANSFORMERS_OFFLINE'] == '1'
+
+
+def test_build_runtime_env_online_mode_keeps_huggingface_access_enabled(monkeypatch):
+    args = SimpleNamespace(host='0.0.0.0', port=8080, enable_base_model_cache=False, online=True)
+
+    monkeypatch.delenv('OFFLINE_MODE', raising=False)
+    monkeypatch.delenv('HF_HUB_OFFLINE', raising=False)
+    monkeypatch.delenv('TRANSFORMERS_OFFLINE', raising=False)
+
+    env = start.build_runtime_env(
+        Path('C:/fake/python.exe'),
+        args,
+        start.PipMirror(),
+        start.NpmRegistry(),
+    )
+
+    assert env.get('OFFLINE_MODE') != 'True'
+    assert env.get('HF_HUB_OFFLINE') != '1'
+    assert env.get('TRANSFORMERS_OFFLINE') != '1'
+
+
+def test_build_runtime_env_points_embedding_paths_to_repo_embedding_model_dir():
+    args = SimpleNamespace(host='0.0.0.0', port=8080, enable_base_model_cache=False, online=False)
+
+    env = start.build_runtime_env(
+        Path('C:/fake/python.exe'),
+        args,
+        start.PipMirror(),
+        start.NpmRegistry(),
+    )
+
+    expected = str((start.ROOT / 'embedding_model').resolve())
+    assert env['EMBEDDING_MODEL_DIR'] == expected
+    assert env['SENTENCE_TRANSFORMERS_HOME'] == expected
+    assert env['HF_HOME'] == expected
 
 
 def test_parse_requirements_entries_skips_comments_and_blank_lines():

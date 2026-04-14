@@ -35,6 +35,7 @@ from open_webui.utils.access_control.files import has_access_to_file
 from open_webui.retrieval.vector.main import GetResult
 from open_webui.utils.headers import include_user_info_headers
 from open_webui.utils.misc import get_message_list
+from open_webui.utils.model_paths import find_local_embedding_model_path
 
 from open_webui.retrieval.web.utils import get_web_loader
 from open_webui.retrieval.loaders.youtube import YoutubeLoader
@@ -1179,6 +1180,11 @@ async def get_sources_from_items(
 
 
 def get_model_path(model: str, update_model: bool = False):
+    local_model_path = find_local_embedding_model_path(model)
+    if local_model_path:
+        log.info(f'Using local embedding model path: {local_model_path}')
+        return local_model_path
+
     # Construct huggingface_hub kwargs with local_files_only to return the snapshot path
     cache_dir = os.getenv('SENTENCE_TRANSFORMERS_HOME')
 

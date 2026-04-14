@@ -10,10 +10,19 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
+
+try:
+    import ctypes
+    from ctypes import wintypes
+except ImportError:
+    ctypes = None
+    wintypes = None
 
 
 """
@@ -46,6 +55,7 @@ VENDOR_REPORT_JSON = VENDOR_DIR / 'report.json'
 VENDOR_REPORT_MD = VENDOR_DIR / 'report.md'
 SCRIPT_STATE_VERSION = 1
 GRACEFUL_STOP_TIMEOUT = 8.0
+MANAGED_PROCESS_POLL_INTERVAL = 0.2
 
 
 # 启动脚本自己的状态输出统一走这里，方便后面整体切换风格。
@@ -140,6 +150,12 @@ def terminate_process_gracefully(
     timeout: float = GRACEFUL_STOP_TIMEOUT,
     use_ctrl_break: bool = False,
 ) -> int | None:
+    poll = getattr(process, 'poll', None)
+    if callable(poll):
+        current_returncode = poll()
+        if current_returncode is not None:
+            return current_returncode
+
     try:
         if use_ctrl_break and os.name == 'nt':
             process.send_signal(signal.CTRL_BREAK_EVENT)
@@ -152,11 +168,126 @@ def terminate_process_gracefully(
         return process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         log(f'{service_label} 在 {int(timeout)} 秒内未退出，正在强制结束...')
+        if os.name == 'nt':
+            subprocess.run(
+                ['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
         process.kill()
         try:
             return process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             return process.returncode
+
+
+def build_managed_signal_handler(
+    process: subprocess.Popen,
+    *,
+    service_label: str,
+    use_ctrl_break: bool = False,
+    shutdown_requested: threading.Event | None = None,
+    shutdown_state: dict[str, str] | None = None,
+):
+    def handler(signum, _frame):
+        if shutdown_requested is not None:
+            if shutdown_requested.is_set():
+                return
+            shutdown_requested.set()
+
+        signal_name = signal.Signals(signum).name if signum in signal.Signals._value2member_map_ else str(signum)
+        if shutdown_state is not None:
+            shutdown_state.setdefault('signal_name', signal_name)
+        log(f'收到 {signal_name} 信号，正在优雅关闭 {service_label}...')
+
+    return handler
+
+
+def build_managed_console_handler(
+    process: subprocess.Popen,
+    *,
+    service_label: str,
+    use_ctrl_break: bool = False,
+    shutdown_requested: threading.Event | None = None,
+    shutdown_state: dict[str, str] | None = None,
+):
+    handled_events = {
+        0: 'CTRL_C_EVENT',
+        1: 'CTRL_BREAK_EVENT',
+        2: 'CTRL_CLOSE_EVENT',
+        5: 'CTRL_LOGOFF_EVENT',
+        6: 'CTRL_SHUTDOWN_EVENT',
+    }
+
+    def handler(ctrl_type: int) -> bool:
+        if ctrl_type not in handled_events:
+            return False
+
+        if shutdown_requested is not None:
+            if shutdown_requested.is_set():
+                return True
+            shutdown_requested.set()
+
+        signal_name = handled_events[ctrl_type]
+        if shutdown_state is not None:
+            shutdown_state.setdefault('signal_name', signal_name)
+
+        log(f'收到 {signal_name}，正在优雅关闭 {service_label}...')
+        return True
+
+    return handler
+
+
+def install_managed_signal_handlers(handler) -> dict[int, object]:
+    if threading.current_thread() is not threading.main_thread():
+        return {}
+
+    previous_handlers: dict[int, object] = {}
+    handled_signals = [signal.SIGINT]
+    if hasattr(signal, 'SIGBREAK'):
+        handled_signals.append(signal.SIGBREAK)
+
+    for handled_signal in handled_signals:
+        previous_handlers[handled_signal] = signal.getsignal(handled_signal)
+        signal.signal(handled_signal, handler)
+
+    return previous_handlers
+
+
+def restore_managed_signal_handlers(previous_handlers: dict[int, object]) -> None:
+    for handled_signal, previous_handler in previous_handlers.items():
+        signal.signal(handled_signal, previous_handler)
+
+
+def install_windows_console_handler(handler):
+    if os.name != 'nt' or ctypes is None or wintypes is None:
+        return None
+
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+    callback = callback_type(lambda ctrl_type: bool(handler(ctrl_type)))
+    ctypes.windll.kernel32.SetConsoleCtrlHandler(callback, True)
+    return callback
+
+
+def restore_windows_console_handler(callback) -> None:
+    if os.name == 'nt' and callback is not None and ctypes is not None:
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(callback, False)
+
+
+def shutdown_managed_process(
+    process: subprocess.Popen,
+    *,
+    service_label: str,
+    use_ctrl_break: bool = False,
+) -> None:
+    terminate_process_gracefully(
+        process,
+        service_label=service_label,
+        use_ctrl_break=use_ctrl_break,
+    )
+    log(f'{service_label} 已停止。')
+    raise SystemExit(130)
 
 
 def run_managed_process(
@@ -166,17 +297,53 @@ def run_managed_process(
     command: list[str] | None = None,
     use_ctrl_break: bool = False,
 ) -> int:
+    shutdown_requested = threading.Event()
+    shutdown_state: dict[str, str] = {}
+
+    signal_handler = build_managed_signal_handler(
+        process,
+        service_label=service_label,
+        use_ctrl_break=use_ctrl_break,
+        shutdown_requested=shutdown_requested,
+        shutdown_state=shutdown_state,
+    )
+    previous_handlers = install_managed_signal_handlers(signal_handler)
+    console_callback = None
+
+    if os.name == 'nt':
+        console_handler = build_managed_console_handler(
+            process,
+            service_label=service_label,
+            use_ctrl_break=use_ctrl_break,
+            shutdown_requested=shutdown_requested,
+            shutdown_state=shutdown_state,
+        )
+        console_callback = install_windows_console_handler(console_handler)
+
     try:
-        return_code = process.wait()
+        while True:
+            if shutdown_requested.is_set():
+                shutdown_managed_process(
+                    process,
+                    service_label=service_label,
+                    use_ctrl_break=use_ctrl_break,
+                )
+
+            return_code = process.poll()
+            if return_code is not None:
+                break
+
+            time.sleep(MANAGED_PROCESS_POLL_INTERVAL)
     except KeyboardInterrupt:
         log(f'收到中断信号，正在优雅关闭 {service_label}...')
-        terminate_process_gracefully(
+        shutdown_managed_process(
             process,
             service_label=service_label,
             use_ctrl_break=use_ctrl_break,
         )
-        log(f'{service_label} 已停止。')
-        raise SystemExit(130)
+    finally:
+        restore_windows_console_handler(console_callback)
+        restore_managed_signal_handlers(previous_handlers)
 
     if return_code != 0:
         raise subprocess.CalledProcessError(return_code, command or [])
@@ -933,6 +1100,21 @@ def build_runtime_env(
     env.setdefault('RAG_EMBEDDING_MODEL_AUTO_UPDATE', 'False')
     env.setdefault('RAG_RERANKING_MODEL_AUTO_UPDATE', 'False')
 
+    embedding_model_dir = str((ROOT / 'embedding_model').resolve())
+    env.setdefault('EMBEDDING_MODEL_DIR', embedding_model_dir)
+    env.setdefault('SENTENCE_TRANSFORMERS_HOME', embedding_model_dir)
+    env.setdefault('HF_HOME', embedding_model_dir)
+
+    if getattr(args, 'online', False):
+        env.pop('OFFLINE_MODE', None)
+        env.pop('HF_HUB_OFFLINE', None)
+        env.pop('TRANSFORMERS_OFFLINE', None)
+    else:
+        env.setdefault('OFFLINE_MODE', 'True')
+        env.setdefault('HF_HUB_OFFLINE', '1')
+        env.setdefault('TRANSFORMERS_OFFLINE', '1')
+        env.setdefault('HF_HUB_DISABLE_TELEMETRY', '1')
+
     if not args.enable_base_model_cache and 'ENABLE_BASE_MODELS_CACHE' not in env:
         env['ENABLE_BASE_MODELS_CACHE'] = 'False'
 
@@ -994,6 +1176,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--force-node-install', action='store_true')
     parser.add_argument('--force-frontend-build', action='store_true')
     parser.add_argument('--enable-base-model-cache', action='store_true')
+    parser.add_argument('--online', action='store_true')
     parser.add_argument('--allow-unsupported-python', action='store_true')
     return parser.parse_args(argv)
 

@@ -18,6 +18,8 @@ python start.py
 ```
 
 The app will start at `http://localhost:8080`.
+`start.py` now defaults to offline-safe mode, which blocks Hugging Face model downloads in restricted networks.
+If you explicitly want online model downloads and update checks, use `python start.py --online`.
 
 ## Python Package Install
 
@@ -40,10 +42,13 @@ You can also review [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
 
 ## Offline Mode
 
-To prevent model downloads in offline environments:
+Repository startup now defaults to offline-safe mode for restricted networks.
+If you are launching the backend another way, set these variables manually:
 
 ```bash
-export HF_HUB_OFFLINE=1
+OFFLINE_MODE=True
+HF_HUB_OFFLINE=1
+TRANSFORMERS_OFFLINE=1
 ```
 
 ## Development
