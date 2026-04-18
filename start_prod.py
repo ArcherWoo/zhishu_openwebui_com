@@ -113,6 +113,12 @@ def apply_production_defaults(args: argparse.Namespace) -> None:
     os.environ.setdefault('EMBEDDING_MODEL_DIR', str((ROOT / 'embedding_model').resolve()))
     os.environ.setdefault('SENTENCE_TRANSFORMERS_HOME', os.environ['EMBEDDING_MODEL_DIR'])
     os.environ.setdefault('HF_HOME', os.environ['EMBEDDING_MODEL_DIR'])
+    os.environ.setdefault('NLTK_DATA', str((ROOT / 'nltk_data').resolve()))
+    os.environ.setdefault('AUTO_DOWNLOAD_NLTK', 'False')
+    os.environ.setdefault('ENABLE_UPLOAD_DECRYPTION', 'True')
+    os.environ.setdefault('DECRYPT_SERVER_URL', '')
+    os.environ.setdefault('DECRYPT_TIMEOUT_SECONDS', '120')
+    os.environ.setdefault('DECRYPT_OUTPUT_DIR', str((ROOT / 'backend' / 'data' / 'uploads' / 'decrypted').resolve()))
 
     if not args.enable_base_model_cache:
         os.environ.setdefault('ENABLE_BASE_MODELS_CACHE', 'False')
@@ -204,6 +210,12 @@ def exported_environment() -> dict[str, str]:
         'EMBEDDING_MODEL_DIR',
         'SENTENCE_TRANSFORMERS_HOME',
         'HF_HOME',
+        'NLTK_DATA',
+        'AUTO_DOWNLOAD_NLTK',
+        'ENABLE_UPLOAD_DECRYPTION',
+        'DECRYPT_SERVER_URL',
+        'DECRYPT_TIMEOUT_SECONDS',
+        'DECRYPT_OUTPUT_DIR',
         'FORWARDED_ALLOW_IPS',
         'UVICORN_WORKERS',
         'UVICORN_WS',

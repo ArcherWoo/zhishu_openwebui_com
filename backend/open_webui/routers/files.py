@@ -3,6 +3,7 @@ import os
 import uuid
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 from urllib.parse import quote
 import asyncio
@@ -50,6 +51,7 @@ from open_webui.storage.provider import Storage
 
 from open_webui.config import BYPASS_ADMIN_ACCESS_CONTROL
 from open_webui.utils.auth import get_admin_user, get_verified_user
+from open_webui.utils.decrypt import DecryptError, decrypt_uploaded_file
 from open_webui.utils.misc import strict_match_mime_type
 from pydantic import BaseModel
 
@@ -86,6 +88,18 @@ def _is_text_file(file_path: str, chunk_size: int = 8192) -> bool:
         return True
     except (UnicodeDecodeError, Exception):
         return False
+
+
+def _delete_local_file_if_exists(path: str | os.PathLike | None) -> None:
+    if not path:
+        return
+
+    try:
+        resolved = Path(path)
+        if resolved.is_file():
+            resolved.unlink()
+    except Exception:
+        log.warning(f'Failed to delete temporary upload artifact: {path}')
 
 
 def process_uploaded_file(
@@ -201,6 +215,9 @@ def upload_file_handler(
                 detail=ERROR_MESSAGES.DEFAULT('Invalid metadata format'),
             )
     file_metadata = metadata if metadata else {}
+    uploaded_storage_path: str | None = None
+    local_uploaded_path: Path | None = None
+    decrypted_output_path: Path | None = None
 
     try:
         unsanitized_filename = file.filename
@@ -224,17 +241,46 @@ def upload_file_handler(
         # replace filename with uuid
         id = str(uuid.uuid4())
         name = filename
-        filename = f'{id}_{filename}'
+        storage_filename = f'{id}_{filename}'
+        filename = storage_filename
+        storage_tags = {
+            'OpenWebUI-User-Email': user.email,
+            'OpenWebUI-User-Id': user.id,
+            'OpenWebUI-User-Name': user.name,
+            'OpenWebUI-File-Id': id,
+        }
         contents, file_path = Storage.upload_file(
             file.file,
             filename,
-            {
-                'OpenWebUI-User-Email': user.email,
-                'OpenWebUI-User-Id': user.id,
-                'OpenWebUI-User-Name': user.name,
-                'OpenWebUI-File-Id': id,
-            },
+            storage_tags,
         )
+        uploaded_storage_path = file_path
+        local_uploaded_path = Path(Storage.get_file(file_path))
+
+        decrypted = decrypt_uploaded_file(
+            input_path=str(local_uploaded_path),
+            original_filename=name,
+            content_type=(file.content_type if isinstance(file.content_type, str) else None),
+            metadata=file_metadata,
+            config=request.app.state.config,
+        )
+        decrypted_output_path = decrypted.output_path
+
+        with decrypted.output_path.open('rb') as decrypted_file:
+            contents, file_path = Storage.upload_file(
+                decrypted_file,
+                storage_filename,
+                storage_tags,
+            )
+
+        name = decrypted.filename
+        content_type = decrypted.content_type
+
+        if decrypted.output_path.resolve() != local_uploaded_path.resolve():
+            _delete_local_file_if_exists(decrypted.output_path)
+
+        if str(local_uploaded_path) != file_path:
+            _delete_local_file_if_exists(local_uploaded_path)
 
         file_item = Files.insert_new_file(
             user.id,
@@ -248,7 +294,7 @@ def upload_file_handler(
                     },
                     'meta': {
                         'name': name,
-                        'content_type': (file.content_type if isinstance(file.content_type, str) else None),
+                        'content_type': content_type,
                         'size': len(contents),
                         'data': file_metadata,
                     },
@@ -263,11 +309,12 @@ def upload_file_handler(
                 Channels.add_file_to_channel_by_id(channel.id, file_item.id, user.id, db=db)
 
         if process:
+            processing_file = SimpleNamespace(content_type=content_type or file.content_type)
             if background_tasks and process_in_background:
                 background_tasks.add_task(
                     process_uploaded_file,
                     request,
-                    file,
+                    processing_file,
                     file_path,
                     file_item,
                     file_metadata,
@@ -277,7 +324,7 @@ def upload_file_handler(
             else:
                 process_uploaded_file(
                     request,
-                    file,
+                    processing_file,
                     file_path,
                     file_item,
                     file_metadata,
@@ -296,6 +343,23 @@ def upload_file_handler(
 
     except HTTPException as e:
         raise e
+    except DecryptError as e:
+        log.exception(e)
+        if uploaded_storage_path:
+            try:
+                Storage.delete_file(uploaded_storage_path)
+            except Exception:
+                _delete_local_file_if_exists(local_uploaded_path)
+
+        if decrypted_output_path and (
+            not local_uploaded_path or decrypted_output_path.resolve() != local_uploaded_path.resolve()
+        ):
+            _delete_local_file_if_exists(decrypted_output_path)
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.DEFAULT(f'文件解密失败: {e}'),
+        )
     except Exception as e:
         log.exception(e)
         raise HTTPException(

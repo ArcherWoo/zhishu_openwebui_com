@@ -8,6 +8,8 @@ node_modules
 .env
 .env.*
 !.env.example
+nltk_data/*
+!nltk_data/README.md
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .start-state.json

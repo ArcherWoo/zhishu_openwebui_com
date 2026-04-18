@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import socket
 import signal
-import tempfile
+import shutil
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +14,9 @@ import prefetch_vendor_deps as prefetch_vendor_deps
 import start
 import start_prod
 from open_webui import uvicorn_runner
+
+
+TEST_TEMP_ROOT = Path(__file__).resolve().parents[1] / 'tmp-test-artifacts'
 
 
 def test_run_cli_exits_cleanly_on_keyboard_interrupt(monkeypatch, capsys):
@@ -507,9 +510,43 @@ def test_build_runtime_env_points_embedding_paths_to_repo_embedding_model_dir():
     assert env['HF_HOME'] == expected
 
 
+def test_build_runtime_env_sets_upload_decryption_defaults():
+    args = SimpleNamespace(host='0.0.0.0', port=8080, enable_base_model_cache=False, online=False)
+
+    env = start.build_runtime_env(
+        Path('C:/fake/python.exe'),
+        args,
+        start.PipMirror(),
+        start.NpmRegistry(),
+    )
+
+    expected_output_dir = str((start.ROOT / 'backend' / 'data' / 'uploads' / 'decrypted').resolve())
+    assert env['ENABLE_UPLOAD_DECRYPTION'] == 'True'
+    assert env['DECRYPT_SERVER_URL'] == ''
+    assert env['DECRYPT_TIMEOUT_SECONDS'] == '120'
+    assert env['DECRYPT_OUTPUT_DIR'] == expected_output_dir
+
+
+def test_start_prod_exported_environment_includes_upload_decryption_vars(monkeypatch):
+    monkeypatch.setenv('ENABLE_UPLOAD_DECRYPTION', 'True')
+    monkeypatch.setenv('DECRYPT_SERVER_URL', 'http://10.0.0.1:8080/decrypt')
+    monkeypatch.setenv('DECRYPT_TIMEOUT_SECONDS', '180')
+    monkeypatch.setenv('DECRYPT_OUTPUT_DIR', 'C:/decrypt-output')
+
+    env = start_prod.exported_environment()
+
+    assert env['ENABLE_UPLOAD_DECRYPTION'] == 'True'
+    assert env['DECRYPT_SERVER_URL'] == 'http://10.0.0.1:8080/decrypt'
+    assert env['DECRYPT_TIMEOUT_SECONDS'] == '180'
+    assert env['DECRYPT_OUTPUT_DIR'] == 'C:/decrypt-output'
+
+
 def test_parse_requirements_entries_skips_comments_and_blank_lines():
-    with tempfile.TemporaryDirectory() as temp_dir:
-        requirements = Path(temp_dir) / 'requirements.txt'
+    temp_dir = TEST_TEMP_ROOT / 'parse-requirements'
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    temp_dir.mkdir(parents=True)
+    try:
+        requirements = temp_dir / 'requirements.txt'
         requirements.write_text(
             '\n'.join(
                 [
@@ -527,6 +564,8 @@ def test_parse_requirements_entries_skips_comments_and_blank_lines():
             'fastapi==0.1.0',
             'aiohttp==3.0.0',
         ]
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def test_collect_npm_package_specs_from_lockfile_skips_root_and_file_links():
@@ -656,9 +695,12 @@ def test_write_reports_includes_manual_recovery_commands():
         },
     }
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        report_json = Path(temp_dir) / 'report.json'
-        report_md = Path(temp_dir) / 'report.md'
+    temp_dir = TEST_TEMP_ROOT / 'write-reports'
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    temp_dir.mkdir(parents=True)
+    try:
+        report_json = temp_dir / 'report.json'
+        report_md = temp_dir / 'report.md'
 
         prefetch_vendor_deps.write_reports(report, report_json=report_json, report_md=report_md)
 
@@ -666,6 +708,8 @@ def test_write_reports_includes_manual_recovery_commands():
         assert '手工补包命令' in markdown
         assert 'python -m pip download --dest vendor/python "fastapi==0.1.0"' in markdown
         assert 'npm cache add "react@18.3.1" --cache vendor/npm' in markdown
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def test_prefetch_parse_args_supports_verbose_flag():

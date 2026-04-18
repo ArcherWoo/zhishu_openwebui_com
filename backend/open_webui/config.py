@@ -2766,6 +2766,30 @@ FILE_IMAGE_COMPRESSION_HEIGHT = PersistentConfig(
     (int(os.environ.get('FILE_IMAGE_COMPRESSION_HEIGHT')) if os.environ.get('FILE_IMAGE_COMPRESSION_HEIGHT') else None),
 )
 
+ENABLE_UPLOAD_DECRYPTION = PersistentConfig(
+    'ENABLE_UPLOAD_DECRYPTION',
+    'file.upload_decryption.enable',
+    os.environ.get('ENABLE_UPLOAD_DECRYPTION', 'False').lower() == 'true',
+)
+
+DECRYPT_SERVER_URL = PersistentConfig(
+    'DECRYPT_SERVER_URL',
+    'file.upload_decryption.server_url',
+    os.environ.get('DECRYPT_SERVER_URL', ''),
+)
+
+DECRYPT_TIMEOUT_SECONDS = PersistentConfig(
+    'DECRYPT_TIMEOUT_SECONDS',
+    'file.upload_decryption.timeout_seconds',
+    int(os.environ.get('DECRYPT_TIMEOUT_SECONDS', '120')),
+)
+
+DECRYPT_OUTPUT_DIR = PersistentConfig(
+    'DECRYPT_OUTPUT_DIR',
+    'file.upload_decryption.output_dir',
+    os.environ.get('DECRYPT_OUTPUT_DIR', f'{UPLOAD_DIR}/decrypted'),
+)
+
 
 RAG_ALLOWED_FILE_EXTENSIONS = PersistentConfig(
     'RAG_ALLOWED_FILE_EXTENSIONS',

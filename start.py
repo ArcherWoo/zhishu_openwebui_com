@@ -1101,9 +1101,17 @@ def build_runtime_env(
     env.setdefault('RAG_RERANKING_MODEL_AUTO_UPDATE', 'False')
 
     embedding_model_dir = str((ROOT / 'embedding_model').resolve())
+    nltk_data_dir = str((ROOT / 'nltk_data').resolve())
+    decrypt_output_dir = str((ROOT / 'backend' / 'data' / 'uploads' / 'decrypted').resolve())
     env.setdefault('EMBEDDING_MODEL_DIR', embedding_model_dir)
     env.setdefault('SENTENCE_TRANSFORMERS_HOME', embedding_model_dir)
     env.setdefault('HF_HOME', embedding_model_dir)
+    env.setdefault('NLTK_DATA', nltk_data_dir)
+    env.setdefault('AUTO_DOWNLOAD_NLTK', 'False')
+    env.setdefault('ENABLE_UPLOAD_DECRYPTION', 'True')
+    env.setdefault('DECRYPT_SERVER_URL', '')
+    env.setdefault('DECRYPT_TIMEOUT_SECONDS', '120')
+    env.setdefault('DECRYPT_OUTPUT_DIR', decrypt_output_dir)
 
     if getattr(args, 'online', False):
         env.pop('OFFLINE_MODE', None)
