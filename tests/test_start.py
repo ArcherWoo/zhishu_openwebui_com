@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import socket
 import signal
 import shutil
@@ -68,6 +69,51 @@ def test_collect_lan_ipv4_addresses_prefers_private_ipv4_addresses(monkeypatch):
     assert start.collect_lan_ipv4_addresses() == ['192.168.1.20', '172.20.5.9', '10.0.0.8']
 
 
+def test_python_dependency_cache_signature_ignores_frontend_inputs(monkeypatch):
+    monkeypatch.setattr(start, 'REQUIREMENTS_FILE', Path('C:/repo/backend/requirements.txt'))
+    monkeypatch.setattr(start, 'PACKAGE_JSON', Path('C:/repo/package.json'))
+    monkeypatch.setattr(start, 'PACKAGE_LOCK', Path('C:/repo/package-lock.json'))
+
+    stat_map = {
+        os.path.normcase(os.path.normpath('C:/repo/backend/requirements.txt')): SimpleNamespace(st_mtime_ns=11),
+        os.path.normcase(os.path.normpath('C:/repo/package.json')): SimpleNamespace(st_mtime_ns=22),
+        os.path.normcase(os.path.normpath('C:/repo/package-lock.json')): SimpleNamespace(st_mtime_ns=33),
+    }
+
+    monkeypatch.setattr(Path, 'stat', lambda self: stat_map[os.path.normcase(os.path.normpath(str(self)))])
+    monkeypatch.setattr(
+        Path,
+        'exists',
+        lambda self: os.path.normcase(os.path.normpath(str(self))) in stat_map,
+    )
+
+    assert start.python_requirements_signature() == {
+        'requirements_mtime': '11',
+    }
+
+
+def test_node_dependency_cache_signature_tracks_only_node_inputs(monkeypatch):
+    monkeypatch.setattr(start, 'PACKAGE_JSON', Path('C:/repo/package.json'))
+    monkeypatch.setattr(start, 'PACKAGE_LOCK', Path('C:/repo/package-lock.json'))
+
+    stat_map = {
+        os.path.normcase(os.path.normpath('C:/repo/package.json')): SimpleNamespace(st_mtime_ns=22),
+        os.path.normcase(os.path.normpath('C:/repo/package-lock.json')): SimpleNamespace(st_mtime_ns=33),
+    }
+
+    monkeypatch.setattr(Path, 'stat', lambda self: stat_map[os.path.normcase(os.path.normpath(str(self)))])
+    monkeypatch.setattr(
+        Path,
+        'exists',
+        lambda self: os.path.normcase(os.path.normpath(str(self))) in stat_map,
+    )
+
+    assert start.node_requirements_signature() == {
+        'package_lock_mtime': '33',
+        'package_json_mtime': '22',
+    }
+
+
 def test_launch_open_webui_logs_browser_and_lan_urls(monkeypatch, capsys):
     prepared = start.PreparedRuntime(
         base_python='python',
@@ -98,6 +144,72 @@ def test_launch_open_webui_logs_browser_and_lan_urls(monkeypatch, capsys):
     assert '[start] Open WebUI 已启动。' in captured.out
     assert '[start] 本机访问地址: http://localhost:8080' in captured.out
     assert '[start] 局域网访问地址: http://192.168.1.20:8080' in captured.out
+
+
+def test_launch_open_webui_logs_browser_and_lan_urls(monkeypatch, capsys):
+    prepared = start.PreparedRuntime(
+        base_python='python',
+        npm_executable='npm',
+        pip_mirror=start.PipMirror(),
+        npm_registry=start.NpmRegistry(),
+        pip_env={},
+        npm_env={},
+        venv_python=Path('C:/fake/python.exe'),
+        runtime_env={},
+    )
+    args = SimpleNamespace(host='0.0.0.0', port=8080)
+
+    monkeypatch.setattr(start, 'ensure_port_available', lambda *_args: None)
+    monkeypatch.setattr(start, 'build_uvicorn_command', lambda *_args, **_kwargs: ['python', '-m', 'uvicorn'])
+    monkeypatch.setattr(start, 'collect_lan_ipv4_addresses', lambda: ['192.168.1.20'])
+    monkeypatch.setattr(start, 'run_managed_process', lambda *args, **kwargs: 0)
+
+    class DummyProcess:
+        returncode = None
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(start.subprocess, 'Popen', lambda *args, **kwargs: DummyProcess())
+
+    start.launch_open_webui(prepared, args)
+
+    captured = capsys.readouterr()
+    assert '[start] 准备启动 Open WebUI...' in captured.out
+    assert '[start] Open WebUI 已启动。' in captured.out
+    assert '[start] 本机访问地址: http://localhost:8080' in captured.out
+    assert '[start] 局域网访问地址: http://192.168.1.20:8080' in captured.out
+
+
+def test_launch_open_webui_checks_port_before_spawning(monkeypatch):
+    prepared = start.PreparedRuntime(
+        base_python='python',
+        npm_executable='npm',
+        pip_mirror=start.PipMirror(),
+        npm_registry=start.NpmRegistry(),
+        pip_env={},
+        npm_env={},
+        venv_python=Path('C:/fake/python.exe'),
+        runtime_env={},
+    )
+    args = SimpleNamespace(host='0.0.0.0', port=8080)
+    checked = []
+
+    monkeypatch.setattr(start, 'ensure_port_available', lambda host, port: checked.append((host, port)))
+    monkeypatch.setattr(start, 'build_uvicorn_command', lambda *_args, **_kwargs: ['python', '-m', 'uvicorn'])
+    monkeypatch.setattr(start, 'run_managed_process', lambda *args, **kwargs: 0)
+
+    class DummyProcess:
+        returncode = None
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(start.subprocess, 'Popen', lambda *args, **kwargs: DummyProcess())
+
+    start.launch_open_webui(prepared, args)
+
+    assert checked == [('0.0.0.0', 8080)]
 
 
 def test_build_uvicorn_command_uses_wrapper_module_for_clean_interrupt_shutdown():
@@ -264,6 +376,19 @@ def test_build_managed_console_handler_only_marks_shutdown_flag(capsys):
     assert '[start] 收到 CTRL_C_EVENT，正在优雅关闭 Open WebUI...' in captured.out
 
 
+def test_install_managed_signal_handlers_includes_sigterm_on_non_windows(monkeypatch):
+    handlers = []
+
+    monkeypatch.setattr(start, 'os', SimpleNamespace(name='posix'))
+    monkeypatch.setattr(start.threading, 'current_thread', start.threading.main_thread)
+    monkeypatch.setattr(start.signal, 'getsignal', lambda signum: None)
+    monkeypatch.setattr(start.signal, 'signal', lambda signum, handler: handlers.append(signum))
+
+    start.install_managed_signal_handlers(lambda *_args: None)
+
+    assert start.signal.SIGTERM in handlers
+
+
 def test_run_managed_process_polls_instead_of_blocking_wait(monkeypatch):
     class DummyProcess:
         def __init__(self):
@@ -363,12 +488,16 @@ def test_launch_open_webui_uses_new_process_group_on_windows(monkeypatch):
     popen_calls = {}
 
     monkeypatch.setattr(start.os, 'name', 'nt')
+    monkeypatch.setattr(start, 'ensure_port_available', lambda *_args: None)
     monkeypatch.setattr(start, 'collect_lan_ipv4_addresses', lambda: [])
     monkeypatch.setattr(start, 'build_uvicorn_command', lambda *_args, **_kwargs: ['python', '-m', 'uvicorn'])
     monkeypatch.setattr(start, 'run_managed_process', lambda *args, **kwargs: 0)
 
     class DummyProcess:
-        returncode = 0
+        returncode = None
+
+        def poll(self):
+            return None
 
     def fake_popen(*args, **kwargs):
         popen_calls['creationflags'] = kwargs.get('creationflags', 0)
@@ -539,6 +668,28 @@ def test_start_prod_exported_environment_includes_upload_decryption_vars(monkeyp
     assert env['DECRYPT_SERVER_URL'] == 'http://10.0.0.1:8080/decrypt'
     assert env['DECRYPT_TIMEOUT_SECONDS'] == '180'
     assert env['DECRYPT_OUTPUT_DIR'] == 'C:/decrypt-output'
+
+
+def test_capture_returns_empty_string_when_probe_times_out(monkeypatch):
+    def fake_run(*args, **kwargs):
+        raise start.subprocess.TimeoutExpired(cmd='python', timeout=kwargs['timeout'])
+
+    monkeypatch.setattr(start.subprocess, 'run', fake_run)
+
+    assert start.capture(['python', '--version']) == ''
+
+
+def test_capture_uses_default_probe_timeout(monkeypatch):
+    seen = {}
+
+    def fake_run(*args, **kwargs):
+        seen['timeout'] = kwargs['timeout']
+        return SimpleNamespace(returncode=0, stdout='ok\n', stderr='')
+
+    monkeypatch.setattr(start.subprocess, 'run', fake_run)
+
+    assert start.capture(['python', '--version']) == 'ok'
+    assert seen['timeout'] == start.PROBE_COMMAND_TIMEOUT
 
 
 def test_parse_requirements_entries_skips_comments_and_blank_lines():

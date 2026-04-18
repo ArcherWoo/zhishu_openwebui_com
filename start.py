@@ -56,6 +56,7 @@ VENDOR_REPORT_MD = VENDOR_DIR / 'report.md'
 SCRIPT_STATE_VERSION = 1
 GRACEFUL_STOP_TIMEOUT = 8.0
 MANAGED_PROCESS_POLL_INTERVAL = 0.2
+PROBE_COMMAND_TIMEOUT = 10.0
 
 
 # 启动脚本自己的状态输出统一走这里，方便后面整体切换风格。
@@ -1297,6 +1298,240 @@ def launch_open_webui(
 
 
 # 默认脚本真正的公共入口。
+def python_requirements_signature() -> dict[str, str]:
+    return {
+        'requirements_mtime': str(REQUIREMENTS_FILE.stat().st_mtime_ns),
+    }
+
+
+def node_requirements_signature() -> dict[str, str]:
+    return {
+        'package_lock_mtime': str(PACKAGE_LOCK.stat().st_mtime_ns if PACKAGE_LOCK.exists() else 0),
+        'package_json_mtime': str(PACKAGE_JSON.stat().st_mtime_ns if PACKAGE_JSON.exists() else 0),
+    }
+
+
+def requirements_signature() -> dict[str, str]:
+    return {
+        **python_requirements_signature(),
+        **node_requirements_signature(),
+    }
+
+
+def install_managed_signal_handlers(handler) -> dict[int, object]:
+    if threading.current_thread() is not threading.main_thread():
+        return {}
+
+    previous_handlers: dict[int, object] = {}
+    handled_signals = [signal.SIGINT]
+    if hasattr(signal, 'SIGBREAK'):
+        handled_signals.append(signal.SIGBREAK)
+    if os.name != 'nt' and hasattr(signal, 'SIGTERM'):
+        handled_signals.append(signal.SIGTERM)
+
+    for handled_signal in handled_signals:
+        previous_handlers[handled_signal] = signal.getsignal(handled_signal)
+        signal.signal(handled_signal, handler)
+
+    return previous_handlers
+
+
+def capture(
+    cmd: list[str],
+    *,
+    cwd: Path = ROOT,
+    env: dict[str, str] | None = None,
+    timeout: float = PROBE_COMMAND_TIMEOUT,
+) -> str:
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        log(f'命令探测超时，已跳过: {shell_join(cmd)}')
+        return ''
+
+    if result.returncode != 0:
+        return ''
+    return result.stdout.strip()
+
+
+def ensure_backend_dependencies(
+    venv_python: Path,
+    base_python: str,
+    args: argparse.Namespace,
+    pip_env: dict[str, str],
+) -> None:
+    state = load_state()
+    cached = state.get('python', {})
+    expected = {
+        'state_version': SCRIPT_STATE_VERSION,
+        'base_python': str(Path(base_python).resolve()),
+        'venv_python': str(venv_python.resolve()),
+        **python_requirements_signature(),
+    }
+
+    if args.force_python_install or cached != expected:
+        local_only_command, fallback_command = build_python_install_commands(
+            venv_python,
+            PYTHON_VENDOR_DIR,
+            REQUIREMENTS_FILE,
+        )
+        run_with_vendor_fallback(
+            local_only_command,
+            fallback_command,
+            vendor_dir=PYTHON_VENDOR_DIR,
+            env=pip_env,
+            local_label='后端 Python 依赖安装',
+            fallback_label='镜像源或在线 pip 安装',
+        )
+
+        version = interpreter_version(str(venv_python))
+        if version and version >= (3, 13, 0):
+            local_only_command, fallback_command = build_python_requirement_install_commands(
+                venv_python,
+                PYTHON_VENDOR_DIR,
+                'audioop-lts',
+            )
+            run_with_vendor_fallback(
+                local_only_command,
+                fallback_command,
+                vendor_dir=PYTHON_VENDOR_DIR,
+                env=pip_env,
+                local_label='audioop-lts 本地安装',
+                fallback_label='镜像源或在线 pip 安装',
+            )
+
+        state['python'] = expected
+        save_state(state)
+    else:
+        log('后端 Python 依赖未发生变化，跳过 pip 安装。')
+
+
+def ensure_frontend_dependencies(
+    npm_executable: str,
+    args: argparse.Namespace,
+    npm_env: dict[str, str],
+) -> None:
+    if args.backend_only:
+        log('检测到 --backend-only，跳过 npm ci。')
+        return
+
+    state = load_state()
+    cached = state.get('node', {})
+    expected = {
+        'state_version': SCRIPT_STATE_VERSION,
+        **node_requirements_signature(),
+    }
+
+    if args.force_node_install or cached != expected or not (ROOT / 'node_modules').exists():
+        local_only_command, fallback_command = build_npm_install_commands(
+            npm_executable,
+            NPM_VENDOR_DIR,
+        )
+        run_with_vendor_fallback(
+            local_only_command,
+            fallback_command,
+            vendor_dir=NPM_VENDOR_DIR,
+            env=npm_env,
+            local_label='前端 npm 本地缓存安装',
+            fallback_label='镜像源或在线 npm 安装',
+        )
+        state['node'] = expected
+        save_state(state)
+    else:
+        log('前端 Node.js 依赖未发生变化，跳过 npm ci。')
+
+
+def log_access_urls(host: str, port: int) -> None:
+    log(f'本机访问地址: {browser_url(host, port)}')
+
+    lan_addresses = collect_lan_ipv4_addresses()
+    if not lan_addresses:
+        log('未检测到可用的局域网 IPv4 地址，当前请优先使用本机地址访问。')
+        return
+
+    for lan_ip in lan_addresses:
+        log(f'局域网访问地址: http://{lan_ip}:{port}')
+
+
+def ensure_port_available(host: str, port: int) -> None:
+    bind_targets: list[tuple[str, int]] = []
+
+    if host in {'0.0.0.0', ''}:
+        bind_targets.append(('0.0.0.0', socket.AF_INET))
+    elif host == '::':
+        bind_targets.append(('::', socket.AF_INET6))
+    else:
+        infos = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
+        for family, _, _, _, sockaddr in infos:
+            bind_targets.append((sockaddr[0], family))
+
+    for bind_host, family in bind_targets:
+        sock = socket.socket(family, socket.SOCK_STREAM)
+        try:
+            sock.bind((bind_host, port))
+        finally:
+            sock.close()
+
+
+def launch_open_webui(
+    prepared: PreparedRuntime,
+    args: argparse.Namespace,
+    *,
+    stdout=None,
+    stderr=None,
+    creationflags: int = 0,
+    wait: bool = True,
+):
+    command = build_uvicorn_command(prepared.venv_python, args, prepared.runtime_env)
+    managed_creationflags = creationflags
+    use_ctrl_break = False
+
+    if wait and os.name == 'nt':
+        managed_creationflags |= subprocess.CREATE_NEW_PROCESS_GROUP
+        use_ctrl_break = True
+
+    log('准备启动 Open WebUI...')
+    log(f'启动命令: {shell_join(command)}')
+
+    if wait:
+        ensure_port_available(args.host, args.port)
+        process = subprocess.Popen(
+            command,
+            cwd=str(ROOT),
+            env=prepared.runtime_env,
+            stdout=stdout,
+            stderr=stderr,
+            creationflags=managed_creationflags,
+        )
+        if process.poll() is None:
+            log('Open WebUI 已启动。')
+            log_access_urls(args.host, args.port)
+        run_managed_process(
+            process,
+            service_label='Open WebUI',
+            command=command,
+            use_ctrl_break=use_ctrl_break,
+        )
+        return subprocess.CompletedProcess(command, 0)
+
+    return subprocess.Popen(
+        command,
+        cwd=str(ROOT),
+        env=prepared.runtime_env,
+        stdout=stdout,
+        stderr=stderr,
+        creationflags=creationflags,
+    )
+
+
 def bootstrap_and_run(args: argparse.Namespace) -> None:
     prepared = prepare_runtime(args)
     launch_open_webui(prepared, args)
