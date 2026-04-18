@@ -9,6 +9,7 @@
 	import DocumentDuplicate from '$lib/components/icons/DocumentDuplicate.svelte';
 	import Download from '$lib/components/icons/Download.svelte';
 	import { config, user } from '$lib/stores';
+	import { shouldShowCommunityFeatures } from '$lib/utils/community';
 
 	const i18n = getContext('i18n');
 
@@ -63,7 +64,7 @@
 				<div class="flex items-center">{$i18n.t('Edit')}</div>
 			</button>
 
-			{#if $config.features.enable_community_sharing}
+			{#if shouldShowCommunityFeatures($config?.features?.enable_community_sharing)}
 				<button
 					class="select-none flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl w-full"
 					draggable="false"

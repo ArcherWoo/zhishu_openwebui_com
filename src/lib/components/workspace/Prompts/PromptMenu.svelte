@@ -8,6 +8,7 @@
 	import Share from '$lib/components/icons/Share.svelte';
 	import DocumentDuplicate from '$lib/components/icons/DocumentDuplicate.svelte';
 	import Download from '$lib/components/icons/Download.svelte';
+	import { shouldShowCommunityFeatures } from '$lib/utils/community';
 
 	const i18n = getContext('i18n');
 
@@ -36,7 +37,7 @@
 		<div
 			class="min-w-[170px] rounded-2xl p-1 border border-gray-100 dark:border-gray-800 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-lg"
 		>
-			{#if $config.features.enable_community_sharing}
+			{#if shouldShowCommunityFeatures($config?.features?.enable_community_sharing)}
 				<button
 					class="select-none flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl w-full"
 					on:click={() => {

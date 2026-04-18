@@ -10,6 +10,7 @@
 	import Pencil from '$lib/components/icons/Pencil.svelte';
 	import { config, settings, user } from '$lib/stores';
 	import GlobeAlt from '$lib/components/icons/GlobeAlt.svelte';
+	import { shouldShowCommunityFeatures } from '$lib/utils/community';
 
 	const i18n = getContext('i18n');
 
@@ -112,7 +113,7 @@
 				<div class="flex items-center">{$i18n.t('Copy Link')}</div>
 			</button>
 
-			{#if $config?.features.enable_community_sharing}
+			{#if shouldShowCommunityFeatures($config?.features?.enable_community_sharing)}
 				<hr class="border-gray-50 dark:border-gray-800/30 my-1" />
 
 				<button

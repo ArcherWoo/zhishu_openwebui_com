@@ -6,6 +6,7 @@
 	import Tags from '$lib/components/common/Tags.svelte';
 	import XMark from '$lib/components/icons/XMark.svelte';
 	import ChevronRight from '$lib/components/icons/ChevronRight.svelte';
+	import { shouldShowCommunityFeatures } from '$lib/utils/community';
 
 	const i18n = getContext('i18n');
 
@@ -253,7 +254,7 @@
 		</button>
 	</div>
 
-	{#if $config?.features.enable_community_sharing && message?.model}
+	{#if shouldShowCommunityFeatures($config?.features?.enable_community_sharing) && message?.model}
 		<div class="mt-3 pt-3 border-t border-gray-100/30 dark:border-gray-850/30">
 			<a
 				href={`https://openwebui.com/models?q=${encodeURIComponent(message.model)}`}

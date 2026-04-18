@@ -62,6 +62,7 @@
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL, WEBUI_HOSTNAME } from '$lib/constants';
 	import { bestMatchingLanguage, displayFileHandler } from '$lib/utils';
+	import { shouldShowCommunityFeatures } from '$lib/utils/community';
 	import { setTextScale } from '$lib/utils/text-scale';
 
 	import NotificationToast from '$lib/components/NotificationToast.svelte';
@@ -764,7 +765,10 @@
 			return;
 		}
 
-		if (event.data === 'export:stats' || event.data?.type === 'export:stats') {
+		if (
+			(event.data === 'export:stats' || event.data?.type === 'export:stats') &&
+			shouldShowCommunityFeatures($config?.features?.enable_community_sharing)
+		) {
 			syncStatsEventData = event.data;
 			showSyncStatsModal = true;
 		}
@@ -1009,7 +1013,7 @@
 		if (
 			(window.opener ?? false) &&
 			$page.url.searchParams.get('sync') === 'true' &&
-			($config?.features?.enable_community_sharing ?? false)
+			shouldShowCommunityFeatures($config?.features?.enable_community_sharing)
 		) {
 			showSyncStatsModal = true;
 		}
@@ -1064,7 +1068,7 @@
 	{/if}
 {/if}
 
-{#if $config?.features.enable_community_sharing}
+{#if shouldShowCommunityFeatures($config?.features?.enable_community_sharing)}
 	<SyncStatsModal bind:show={showSyncStatsModal} eventData={syncStatsEventData} />
 {/if}
 

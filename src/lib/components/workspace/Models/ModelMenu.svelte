@@ -16,6 +16,7 @@
 
 	import { config, user as currentUser, settings } from '$lib/stores';
 	import Link from '$lib/components/icons/Link.svelte';
+	import { shouldShowCommunityFeatures } from '$lib/utils/community';
 
 	const i18n = getContext('i18n');
 
@@ -189,7 +190,7 @@
 				</button>
 			{/if}
 
-			{#if writeAccess && $config?.features.enable_community_sharing}
+			{#if writeAccess && shouldShowCommunityFeatures($config?.features?.enable_community_sharing)}
 				<button
 					class="select-none flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl w-full"
 					on:click={() => {

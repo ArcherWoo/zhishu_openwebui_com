@@ -49,6 +49,7 @@
 	import TagSelector from './common/TagSelector.svelte';
 	import Pagination from '../common/Pagination.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
+	import { shouldShowCommunityFeatures } from '$lib/utils/community';
 
 	let shiftKey = false;
 
@@ -801,7 +802,7 @@
 		{/if}
 	</div>
 
-	{#if $config?.features.enable_community_sharing}
+	{#if shouldShowCommunityFeatures($config?.features?.enable_community_sharing)}
 		<div class=" my-16">
 			<div class=" text-xl font-medium mb-1 line-clamp-1">
 				{$i18n.t('Made by Open WebUI Community')}
