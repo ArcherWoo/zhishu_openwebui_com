@@ -853,6 +853,8 @@ async def add_user(
 
     if Users.get_user_by_email(form_data.email.lower(), db=db):
         raise HTTPException(400, detail=ERROR_MESSAGES.EMAIL_TAKEN)
+    if form_data.username and Users.get_user_by_username(form_data.username, db=db):
+        raise HTTPException(400, detail=ERROR_MESSAGES.USERNAME_TAKEN)
 
     try:
         try:
@@ -867,6 +869,7 @@ async def add_user(
             form_data.name,
             form_data.profile_image_url,
             form_data.role,
+            form_data.username,
             db=db,
         )
 

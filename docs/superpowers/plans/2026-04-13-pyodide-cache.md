@@ -1,42 +1,42 @@
-# Pyodide Cache Reuse Implementation Plan
+﻿# Pyodide 缓存复用实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **给代理工作者：** 必须使用子技能 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans`，按任务逐项落实本计划。步骤使用复选框语法（`- [ ]`）进行跟踪。
 
-**Goal:** Make `scripts/prepare-pyodide.js` reuse a complete local cache instead of re-downloading Pyodide packages on every build.
+**目标：** 让 `scripts/prepare-pyodide.js` 在本地完整缓存存在时复用缓存，而不是每次构建都重新下载 Pyodide 包。
 
-**Architecture:** Introduce a pure cache-validation helper that compares runtime metadata, requested package lists, and required files before the main script attempts any network work. The main script will then skip, repair, or fully reset based on those validation results.
+**架构：** 引入一个纯缓存校验辅助模块，在主脚本发起任何网络请求之前，对运行时元数据、请求的包列表和必需文件进行比对。主脚本随后根据校验结果决定是跳过、补齐还是完全重置。
 
-**Tech Stack:** Node.js, ESM, Vitest.
+**技术栈：** Node.js、ESM、Vitest。
 
 ---
 
-### Task 1: Add Cache Validation Regression Tests
+### 任务 1：新增缓存校验回归测试
 
-**Files:**
-- Create: `scripts/lib/pyodide-cache.test.js`
-- Create: `scripts/lib/pyodide-cache.js`
+**文件：**
+- 创建：`scripts/lib/pyodide-cache.test.js`
+- 创建：`scripts/lib/pyodide-cache.js`
 
-- [ ] **Step 1: Write failing validation tests**
-- [ ] **Step 2: Run `npm run test:frontend -- --run scripts/lib/pyodide-cache.test.js` and confirm the new test fails**
-- [ ] **Step 3: Implement the helper until the new test passes**
+- [ ] **步骤 1：编写失败中的校验测试**
+- [ ] **步骤 2：运行 `npm run test:frontend -- --run scripts/lib/pyodide-cache.test.js`，确认新测试失败**
+- [ ] **步骤 3：实现辅助模块，直到新测试通过**
 
-### Task 2: Refactor `prepare-pyodide.js`
+### 任务 2：重构 `prepare-pyodide.js`
 
-**Files:**
-- Modify: `scripts/prepare-pyodide.js`
+**文件：**
+- 修改：`scripts/prepare-pyodide.js`
 
-- [ ] **Step 1: Read the real Pyodide version from `node_modules/pyodide/package.json`**
-- [ ] **Step 2: Validate `static/pyodide/` before calling `loadPyodide`**
-- [ ] **Step 3: Skip the download flow when the cache is already complete**
-- [ ] **Step 4: Replace deprecated `rmdir` usage with `rm`**
-- [ ] **Step 5: Persist cache metadata only after a successful refresh**
+- [ ] **步骤 1：从 `node_modules/pyodide/package.json` 读取真实 Pyodide 版本**
+- [ ] **步骤 2：在调用 `loadPyodide` 之前校验 `static/pyodide/`**
+- [ ] **步骤 3：当缓存已经完整时跳过下载流程**
+- [ ] **步骤 4：用 `rm` 替换已弃用的 `rmdir` 用法**
+- [ ] **步骤 5：仅在刷新成功后持久化缓存元数据**
 
-### Task 3: Verify Reuse End-To-End
+### 任务 3：端到端验证复用路径
 
-**Files:**
-- Modify: none
+**文件：**
+- 修改：无
 
-- [ ] **Step 1: Run the targeted Vitest regression**
-- [ ] **Step 2: Run `node scripts/prepare-pyodide.js` once to repair or write cache metadata**
-- [ ] **Step 3: Run `node scripts/prepare-pyodide.js` again and confirm the cache-hit skip path**
-- [ ] **Step 4: Run `npm run build` to confirm the build path still works**
+- [ ] **步骤 1：运行定向的 Vitest 回归测试**
+- [ ] **步骤 2：先执行一次 `node scripts/prepare-pyodide.js`，修复缓存或写入元数据**
+- [ ] **步骤 3：再次执行 `node scripts/prepare-pyodide.js`，确认命中缓存并走跳过路径**
+- [ ] **步骤 4：运行 `npm run build`，确认构建路径仍然正常**

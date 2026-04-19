@@ -1178,7 +1178,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description='在仓库根目录完成依赖准备并启动 Open WebUI。',
     )
     parser.add_argument('--host', default='0.0.0.0')
-    parser.add_argument('--port', default=8080, type=int)
+    parser.add_argument('--port', default=4173, type=int)
     parser.add_argument('--venv-dir', default='.venv')
     parser.add_argument('--backend-only', action='store_true')
     parser.add_argument('--force-python-install', action='store_true')

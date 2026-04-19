@@ -1,62 +1,62 @@
-# Disable Ollama By Default Design
+﻿# 默认禁用 Ollama 设计
 
-## Goal
+## 目标
 
-Disable Ollama by default so a fresh deployment does not probe `localhost:11434`, while keeping administrator model-management access intact and removing Ollama-related frontend entry points when the feature is off.
+默认禁用 Ollama，这样全新部署时就不会去探测 `localhost:11434`；同时保留管理员的模型管理入口，并在功能关闭时移除前端里与 Ollama 相关的入口。
 
-## Scope
+## 范围
 
-- Change the backend default for `ENABLE_OLLAMA_API` from enabled to disabled.
-- Expose the Ollama-enabled state through `/api/config` so the frontend can hide related UI.
-- Keep administrator access to workspace model management.
-- Hide Ollama-specific admin UI when Ollama is disabled.
-- Avoid changing unrelated OpenAI or workspace permissions behavior.
+- 将后端 `ENABLE_OLLAMA_API` 的默认值从启用改为禁用。
+- 通过 `/api/config` 暴露 Ollama 是否启用的状态，供前端隐藏相关 UI。
+- 保留管理员对工作区模型管理的访问能力。
+- 在 Ollama 被禁用时隐藏管理员界面中的 Ollama 专属 UI。
+- 不改动与 OpenAI 或工作区权限无关的行为。
 
-## Current State
+## 当前状态
 
-- Backend config enables Ollama by default, which leads model-refresh code to probe `localhost:11434`.
-- Failed Ollama probes are logged as connection errors.
-- Workspace model access is already split correctly: admins always see models, regular users only see them when granted permission.
-- Several frontend surfaces still reference Ollama regardless of whether it is actually used:
-  - Admin connections settings
-  - Admin model management modal
-  - Chat about page Ollama version probe
-  - Admin documents embedding-engine selector
+- 后端配置默认启用 Ollama，这会让模型刷新逻辑去探测 `localhost:11434`。
+- Ollama 探测失败会以连接错误的形式记录到日志中。
+- 工作区模型访问已经正确区分：admin 始终能看到模型，普通用户只有在被授予权限时才能看到。
+- 前端有多处界面无论是否实际使用 Ollama 都会引用它：
+  - 管理员连接设置
+  - 管理员模型管理弹窗
+  - 聊天关于页面的 Ollama 版本探测
+  - 管理员文档嵌入引擎选择器
 
-## Proposed Design
+## 设计方案
 
-### Backend
+### 后端
 
-- Set the default value of `ENABLE_OLLAMA_API` to `False`.
-- Add `enable_ollama_api` to the `/api/config` feature payload.
-- Leave the Ollama router in place so explicit re-enable paths still work if needed later.
+- 将 `ENABLE_OLLAMA_API` 的默认值设为 `False`。
+- 在 `/api/config` 的功能配置载荷中加入 `enable_ollama_api`。
+- 保留 Ollama 路由，这样如果后续需要显式重新启用，仍然有可用路径。
 
-### Frontend
+### 前端
 
-- Read `config.features.enable_ollama_api`.
-- Hide the Ollama section from admin connection settings when the feature is off.
-- Prevent the admin model-management modal from selecting or rendering Ollama management when the feature is off.
-- Skip the about-page Ollama version request when the feature is off.
-- Remove the Ollama embedding-engine option from admin document settings when the feature is off, and coerce an invalid saved value back to the default local embedding engine.
+- 读取 `config.features.enable_ollama_api`。
+- 当功能关闭时，隐藏管理员连接设置中的 Ollama 区块。
+- 当功能关闭时，阻止管理员模型管理弹窗选择或渲染 Ollama 管理视图。
+- 当功能关闭时，跳过关于页面的 Ollama 版本请求。
+- 当功能关闭时，从管理员文档设置中移除 Ollama 嵌入引擎选项；如果已保存的值无效，则回退为默认本地嵌入引擎。
 
-### Permissions
+### 权限
 
-- Do not change workspace routing rules for admin users.
-- Do not change non-admin workspace permission semantics.
+- 不改变管理员用户的工作区路由规则。
+- 不改变非管理员用户的工作区权限语义。
 
-## Testing Strategy
+## 测试策略
 
-- Add a Python regression test that checks the backend default and the `/api/config` feature export.
-- Verify frontend type/build health with `svelte-check`.
+- 添加一个 Python 回归测试，校验后端默认值以及 `/api/config` 的功能导出。
+- 使用 `svelte-check` 验证前端类型与构建健康度。
 
-## Risks
+## 风险
 
-- If an existing deployment depended on implicit Ollama auto-enable, it will now need explicit enablement.
-- Hiding the Ollama embedding option must not leave the page stuck with a now-hidden selected value.
+- 如果现有部署依赖隐式自动启用 Ollama，现在就需要显式开启。
+- 隐藏 Ollama 嵌入选项时，不能让页面卡在一个已经被隐藏的选中值上。
 
-## Success Criteria
+## 成功标准
 
-- Startup no longer attempts Ollama connections by default.
-- Red connection logs to `localhost:11434` disappear in the default setup.
-- Admins still retain workspace model management access.
-- Ollama-specific frontend entry points are hidden when the feature is off.
+- 默认启动时不再主动尝试连接 Ollama。
+- 默认配置下指向 `localhost:11434` 的红色连接日志消失。
+- 管理员仍然保留工作区模型管理能力。
+- 当功能关闭时，前端中的 Ollama 专属入口会被隐藏。

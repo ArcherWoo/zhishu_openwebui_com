@@ -224,7 +224,10 @@
 						res.content
 					);
 
-					const uploadedFile = await uploadFile(localStorage.token, file).catch((e) => {
+					const uploadedFile = await uploadFile(localStorage.token, file, {
+						knowledge_id: knowledge.id,
+						skip_decryption: true
+					}).catch((e) => {
 						toast.error(`${e}`);
 						return null;
 					});
@@ -261,7 +264,7 @@
 		}
 	};
 
-	const uploadFileHandler = async (file) => {
+	const uploadFileHandler = async (file, metadataOverrides = {}) => {
 		console.log(file);
 
 		const fileItem = {
@@ -307,7 +310,8 @@
 					? {
 							language: $settings?.audio?.stt?.language
 						}
-					: {})
+					: {}),
+				...metadataOverrides
 			};
 
 			const uploadedFile = await uploadFile(localStorage.token, file, metadata).catch((e) => {
@@ -798,13 +802,13 @@
 	}}
 />
 
-<AddTextContentModal
-	bind:show={showAddTextContentModal}
-	on:submit={(e) => {
-		const file = createFileFromText(e.detail.name, e.detail.content);
-		uploadFileHandler(file);
-	}}
-/>
+	<AddTextContentModal
+		bind:show={showAddTextContentModal}
+		on:submit={(e) => {
+			const file = createFileFromText(e.detail.name, e.detail.content);
+			uploadFileHandler(file, { skip_decryption: true });
+		}}
+	/>
 
 <input
 	id="files-input"

@@ -214,7 +214,8 @@ def upload_file_handler(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=ERROR_MESSAGES.DEFAULT('Invalid metadata format'),
             )
-    file_metadata = metadata if metadata else {}
+    file_metadata = dict(metadata) if isinstance(metadata, dict) else {}
+    skip_decryption = bool(file_metadata.pop('skip_decryption', False))
     uploaded_storage_path: str | None = None
     local_uploaded_path: Path | None = None
     decrypted_output_path: Path | None = None
@@ -257,30 +258,33 @@ def upload_file_handler(
         uploaded_storage_path = file_path
         local_uploaded_path = Path(Storage.get_file(file_path))
 
-        decrypted = decrypt_uploaded_file(
-            input_path=str(local_uploaded_path),
-            original_filename=name,
-            content_type=(file.content_type if isinstance(file.content_type, str) else None),
-            metadata=file_metadata,
-            config=request.app.state.config,
-        )
-        decrypted_output_path = decrypted.output_path
+        content_type = file.content_type if isinstance(file.content_type, str) else None
 
-        with decrypted.output_path.open('rb') as decrypted_file:
-            contents, file_path = Storage.upload_file(
-                decrypted_file,
-                storage_filename,
-                storage_tags,
+        if not skip_decryption:
+            decrypted = decrypt_uploaded_file(
+                input_path=str(local_uploaded_path),
+                original_filename=name,
+                content_type=content_type,
+                metadata=file_metadata,
+                config=request.app.state.config,
             )
+            decrypted_output_path = decrypted.output_path
 
-        name = decrypted.filename
-        content_type = decrypted.content_type
+            with decrypted.output_path.open('rb') as decrypted_file:
+                contents, file_path = Storage.upload_file(
+                    decrypted_file,
+                    storage_filename,
+                    storage_tags,
+                )
 
-        if decrypted.output_path.resolve() != local_uploaded_path.resolve():
-            _delete_local_file_if_exists(decrypted.output_path)
+            name = decrypted.filename
+            content_type = decrypted.content_type
 
-        if str(local_uploaded_path) != file_path:
-            _delete_local_file_if_exists(local_uploaded_path)
+            if decrypted.output_path.resolve() != local_uploaded_path.resolve():
+                _delete_local_file_if_exists(decrypted.output_path)
+
+            if str(local_uploaded_path) != file_path:
+                _delete_local_file_if_exists(local_uploaded_path)
 
         file_item = Files.insert_new_file(
             user.id,

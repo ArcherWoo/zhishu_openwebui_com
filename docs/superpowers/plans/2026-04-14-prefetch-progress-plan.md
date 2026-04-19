@@ -1,43 +1,43 @@
-# Prefetch Progress Feedback Implementation Plan
+﻿# 预取进度反馈实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **给代理工作者：** 必须使用子技能 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans`，按任务逐项落实本计划。步骤使用复选框语法（`- [ ]`）进行跟踪。
 
-**Goal:** Make `prefetch_vendor_deps.py` show real-time progress, heartbeats, and optional verbose subprocess output without losing its final reports.
+**目标：** 让 `prefetch_vendor_deps.py` 显示实时进度、心跳以及可选的详细子进程输出，同时保留现有的最终报告能力。
 
-**Architecture:** Add a tracked subprocess runner inside `prefetch_vendor_deps.py`, route all long-running package operations through it, and cover the user-visible behavior with focused unit tests.
+**架构：** 在 `prefetch_vendor_deps.py` 内增加一个带跟踪能力的子进程运行器，让所有长时间运行的包操作都通过它执行，并用聚焦的单元测试覆盖用户可见行为。
 
-**Tech Stack:** Python 3.11, `subprocess`, `threading`, `pytest`
+**技术栈：** Python 3.11、`subprocess`、`threading`、`pytest`
 
 ---
 
-### Task 1: Lock the desired terminal behavior with tests
+### 任务 1：用测试锁定期望的终端行为
 
-**Files:**
-- Modify: `tests/test_start.py`
-- Modify: `prefetch_vendor_deps.py`
+**文件：**
+- 修改：`tests/test_start.py`
+- 修改：`prefetch_vendor_deps.py`
 
-- [ ] **Step 1: Write failing tests for `--verbose` parsing and tracked command logs**
-- [ ] **Step 2: Run the focused pytest selection to confirm the tests fail**
-- [ ] **Step 3: Implement the minimal helpers and argument plumbing**
-- [ ] **Step 4: Run the focused pytest selection to confirm the tests pass**
+- [ ] **步骤 1：为 `--verbose` 解析和跟踪命令日志编写失败中的测试**
+- [ ] **步骤 2：运行聚焦的 pytest 选择，确认测试失败**
+- [ ] **步骤 3：实现最小辅助函数和参数接线**
+- [ ] **步骤 4：再次运行聚焦的 pytest 选择，确认测试通过**
 
-### Task 2: Wire tracked progress through Python and NPM phases
+### 任务 2：在 Python 与 NPM 阶段接入跟踪进度
 
-**Files:**
-- Modify: `prefetch_vendor_deps.py`
+**文件：**
+- 修改：`prefetch_vendor_deps.py`
 
-- [ ] **Step 1: Route Python package loops through the tracked runner with phase labels**
-- [ ] **Step 2: Route NPM package loops and validations through the tracked runner**
-- [ ] **Step 3: Add concise phase-start logs and keep failure collection behavior unchanged**
-- [ ] **Step 4: Run the focused pytest selection again**
+- [ ] **步骤 1：让 Python 包循环通过带阶段标签的跟踪运行器执行**
+- [ ] **步骤 2：让 NPM 包循环和校验也通过跟踪运行器执行**
+- [ ] **步骤 3：增加简洁的阶段开始日志，并保持失败收集行为不变**
+- [ ] **步骤 4：再次运行聚焦的 pytest 选择**
 
-### Task 3: Verify the user experience and document the new flags
+### 任务 3：验证用户体验并记录新参数
 
-**Files:**
-- Modify: `VENDOR_DEPLOYMENT_MANUAL.md`
-- Modify: `prefetch_vendor_deps.py`
+**文件：**
+- 修改：`VENDOR_DEPLOYMENT_MANUAL.md`
+- 修改：`prefetch_vendor_deps.py`
 
-- [ ] **Step 1: Run a real `--dry-run` execution and inspect the terminal output**
-- [ ] **Step 2: Update the deployment manual with the new progress/verbose behavior**
-- [ ] **Step 3: Re-run tests and the dry-run command**
-- [ ] **Step 4: Commit and push**
+- [ ] **步骤 1：执行一次真实的 `--dry-run`，检查终端输出**
+- [ ] **步骤 2：更新部署手册，记录新的进度/verbose 行为**
+- [ ] **步骤 3：重新运行测试和 dry-run 命令**
+- [ ] **步骤 4：提交并推送**

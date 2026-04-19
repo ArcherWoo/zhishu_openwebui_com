@@ -24,6 +24,7 @@
 	let _user = {
 		name: '',
 		email: '',
+		username: '',
 		password: '',
 		role: 'user'
 	};
@@ -32,6 +33,7 @@
 		_user = {
 			name: '',
 			email: '',
+			username: '',
 			password: '',
 			role: 'user'
 		};
@@ -52,6 +54,7 @@
 				_user.email,
 				_user.password,
 				_user.role,
+				_user.username || null,
 				generateInitialsImage(_user.name)
 			).catch((error) => {
 				toast.error(`${error}`);
@@ -89,6 +92,7 @@
 									columns[1],
 									columns[2],
 									columns[3].toLowerCase(),
+									null,
 									generateInitialsImage(columns[0])
 								).catch((error) => {
 									toast.error(`Row ${idx + 1}: ${error}`);
@@ -223,6 +227,21 @@
 										aria-label={$i18n.t('Email')}
 										placeholder={$i18n.t('Enter Your Email')}
 										required
+									/>
+								</div>
+							</div>
+
+							<div class="flex flex-col w-full mt-1">
+								<div class=" mb-1 text-xs text-gray-500">{$i18n.t('Username')}</div>
+
+								<div class="flex-1">
+									<input
+										class="w-full text-sm bg-transparent disabled:text-gray-500 dark:disabled:text-gray-500 outline-hidden"
+										type="text"
+										bind:value={_user.username}
+										aria-label={$i18n.t('Username')}
+										placeholder={$i18n.t('Optional username for login')}
+										autocomplete="off"
 									/>
 								</div>
 							</div>

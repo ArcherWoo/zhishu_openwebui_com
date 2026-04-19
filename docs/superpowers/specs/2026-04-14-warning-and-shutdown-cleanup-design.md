@@ -1,64 +1,64 @@
-# Warning And Shutdown Cleanup Design
+﻿# 警告与关闭清理设计
 
-## Goal
+## 目标
 
-Reduce the noisy Svelte build warnings that matter, remove the unwanted community recommendation block from the tools workspace page, and make `python start.py` shut down cleanly on Windows `Ctrl+C` without dumping uvicorn traceback noise.
+减少真正有意义但又嘈杂的 Svelte 构建警告，移除工具工作区页面上不需要的社区推荐区块，并让 `python start.py` 在 Windows 上响应 `Ctrl+C` 时能干净退出，不再输出 uvicorn traceback 噪音。
 
-## Scope
+## 范围
 
-- Remove the tools-page community recommendation block shown below the empty-state list.
-- Fix the actionable frontend warnings currently emitted during `npm run build`.
-- Improve Windows process shutdown so `Ctrl+C` is handled by the launcher first and forwarded to uvicorn in a controlled way.
-- Keep existing admin and workspace behavior intact.
+- 移除工具页面空状态列表下方的社区推荐区块。
+- 修复当前 `npm run build` 会产生的、可操作的前端警告。
+- 改进 Windows 进程关闭逻辑，让 `Ctrl+C` 先由启动器处理，再以受控方式转发给 uvicorn。
+- 保持现有管理员和工作区行为不变。
 
-## Problem Summary
+## 问题概述
 
-### Frontend warnings
+### 前端警告
 
-The current build emits many warnings, but not all of them are equally valuable:
+当前构建会输出很多警告，但并不是所有警告都同样有价值：
 
-- Accessibility warnings for unlabeled buttons and clickable non-interactive elements are real issues.
-- Invalid self-closing non-void tags are noisy and should be normalized for Svelte 5.
-- Unused component exports indicate stale component APIs and add noise.
-- Third-party package metadata warnings are upstream and can be left alone for now.
+- 未标注标签的按钮、以及可点击但非交互元素的可访问性警告是真问题。
+- 非 void 标签的非法自闭合写法噪音较大，应在 Svelte 5 下统一规范。
+- 未使用的组件导出说明组件 API 已经过时，也会增加噪音。
+- 第三方包的元数据警告来自上游，当前可以先不处理。
 
-### Shutdown traceback on `Ctrl+C`
+### `Ctrl+C` 时的关闭 traceback
 
-The current launcher wraps uvicorn, but on Windows both the parent launcher and child uvicorn process can still receive the console interrupt together. That creates a race where uvicorn begins its own interrupt path and prints traceback noise before the wrapper returns `130`.
+当前启动器对 uvicorn 做了包裹，但在 Windows 上，父级启动器进程和子级 uvicorn 进程仍然可能同时收到控制台中断。这会产生竞争条件：uvicorn 会先走自己的中断路径并打印 traceback，而包装器稍后才返回 `130`。
 
-## Proposed Design
+## 设计方案
 
-### Tools page cleanup
+### 工具页面清理
 
-- Remove the bottom “Made by Open WebUI Community / Discover a tool” card from the tools workspace page entirely.
-- Do not rely on empty translations or CSS hiding; remove the block from the component so it is not rendered at all.
+- 彻底移除工具工作区页面底部的 “Made by Open WebUI Community / Discover a tool” 卡片。
+- 不依赖空翻译或 CSS 隐藏，而是直接从组件中删掉该区块，确保它根本不会被渲染。
 
-### Frontend warning cleanup
+### 前端警告清理
 
-- Fix the concrete warning classes that come from project-owned components:
-  - add missing `aria-label` where buttons are icon-only
-  - replace clickable static containers with buttons or add proper keyboard semantics when button conversion is not appropriate
-  - replace self-closing non-void HTML tags with explicit opening and closing tags
-  - remove or convert stale `export let` props that are no longer consumed
-- Leave third-party package warnings and chunk-size advisory warnings untouched for this pass.
-- Focus on the files currently reported by the build output instead of broad refactors.
+- 修复来自项目自有组件的几类明确警告：
+  - 为纯图标按钮补上缺失的 `aria-label`
+  - 将可点击的静态容器替换为按钮，或者在不适合改成按钮时补上正确的键盘语义
+  - 将非 void HTML 标签的自闭合写法改成显式开始/结束标签
+  - 删除或改造不再被使用的 `export let` 旧属性
+- 本轮暂不处理第三方包警告和 chunk 体积建议警告。
+- 以当前构建输出报告的文件为目标进行修复，避免做大范围重构。
 
-### Windows shutdown cleanup
+### Windows 关闭清理
 
-- Launch the uvicorn child in its own Windows process group so the user’s console `Ctrl+C` is first handled by `start.py`.
-- On Windows graceful shutdown, send `CTRL_BREAK_EVENT` to the child process group instead of immediately calling `terminate()`.
-- Keep the existing timeout-based fallback kill path.
-- Preserve the current non-Windows behavior.
-- Add regression tests around the Windows-specific graceful-stop path.
+- 在 Windows 上让 uvicorn 子进程运行在独立的进程组中，这样用户的控制台 `Ctrl+C` 会先由 `start.py` 处理。
+- 在 Windows 的优雅关闭路径中，向子进程组发送 `CTRL_BREAK_EVENT`，而不是立刻调用 `terminate()`。
+- 保留现有基于超时的兜底 kill 路径。
+- 保持非 Windows 平台的当前行为不变。
+- 为 Windows 专属的优雅停止路径增加回归测试。
 
-## Testing Strategy
+## 测试策略
 
-- Add Python regression tests for the Windows graceful-stop branch and process creation flags.
-- Run targeted frontend verification using `npm run build`.
-- Run targeted backend tests with `pytest tests/test_start.py -q`.
+- 为 Windows 优雅停止分支和进程创建标志增加 Python 回归测试。
+- 用 `npm run build` 做定向前端验证。
+- 用 `pytest tests/test_start.py -q` 做定向后端测试。
 
-## Success Criteria
+## 成功标准
 
-- The tools workspace page no longer shows the community recommendation block.
-- `npm run build` no longer emits the project-owned accessibility / self-closing / stale-export warnings fixed in this pass.
-- `python start.py` on Windows can be interrupted with `Ctrl+C` without dumping the uvicorn traceback shown by the user.
+- 工具工作区页面不再显示社区推荐区块。
+- `npm run build` 不再输出本轮修复的、属于项目自身的可访问性 / 自闭合 / 旧导出警告。
+- 在 Windows 上执行 `python start.py` 时，用户按下 `Ctrl+C` 后不再看到 uvicorn traceback。

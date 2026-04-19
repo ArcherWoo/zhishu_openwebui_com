@@ -85,6 +85,7 @@ class SignupForm(BaseModel):
 
 class AddUserForm(SignupForm):
     role: Optional[str] = 'pending'
+    username: Optional[str] = None
 
 
 class AuthsTable:
@@ -95,6 +96,7 @@ class AuthsTable:
         name: str,
         profile_image_url: str = '/user.png',
         role: str = 'pending',
+        username: Optional[str] = None,
         oauth: Optional[dict] = None,
         db: Optional[Session] = None,
     ) -> Optional[UserModel]:
@@ -102,12 +104,22 @@ class AuthsTable:
             log.info('insert_new_auth')
 
             id = str(uuid.uuid4())
+            resolved_username = Users.generate_unique_username(username or email, db=db)
 
             auth = AuthModel(**{'id': id, 'email': email, 'password': password, 'active': True})
             result = Auth(**auth.model_dump())
             db.add(result)
 
-            user = Users.insert_new_user(id, name, email, profile_image_url, role, oauth=oauth, db=db)
+            user = Users.insert_new_user(
+                id,
+                name,
+                email,
+                profile_image_url,
+                role,
+                username=resolved_username,
+                oauth=oauth,
+                db=db,
+            )
 
             db.commit()
             db.refresh(result)
@@ -118,11 +130,14 @@ class AuthsTable:
                 return None
 
     def authenticate_user(
-        self, email: str, verify_password: callable, db: Optional[Session] = None
+        self, identifier: str, verify_password: callable, db: Optional[Session] = None
     ) -> Optional[UserModel]:
-        log.info(f'authenticate_user: {email}')
+        normalized_identifier = identifier.strip().lower()
+        log.info(f'authenticate_user: {normalized_identifier}')
 
-        user = Users.get_user_by_email(email, db=db)
+        user = Users.get_user_by_email(normalized_identifier, db=db)
+        if not user:
+            user = Users.get_user_by_username(normalized_identifier, db=db)
         if not user:
             return None
 

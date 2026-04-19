@@ -1,3 +1,4 @@
+import re
 import time
 from typing import Optional
 
@@ -260,6 +261,39 @@ class UserUpdateForm(BaseModel):
 
 
 class UsersTable:
+    def normalize_username(self, value: str) -> str:
+        username = (value or '').strip().lower()
+        if '@' in username:
+            username = username.split('@', 1)[0]
+
+        username = re.sub(r'[^a-z0-9._-]+', '-', username)
+        username = username.strip('._-')
+        username = username[:50]
+
+        return username or 'user'
+
+    def get_user_by_username(self, username: str, db: Optional[Session] = None) -> Optional[UserModel]:
+        try:
+            normalized = self.normalize_username(username)
+            with get_db_context(db) as db:
+                user = db.query(User).filter(func.lower(User.username) == normalized).first()
+                return UserModel.model_validate(user) if user else None
+        except Exception:
+            return None
+
+    def generate_unique_username(self, value: str, db: Optional[Session] = None) -> str:
+        base_username = self.normalize_username(value)
+        candidate = base_username
+        suffix = 2
+
+        with get_db_context(db) as db:
+            while db.query(User).filter(func.lower(User.username) == candidate).first():
+                suffix_text = f'-{suffix}'
+                candidate = f'{base_username[: 50 - len(suffix_text)]}{suffix_text}'
+                suffix += 1
+
+        return candidate
+
     def insert_new_user(
         self,
         id: str,
@@ -372,6 +406,7 @@ class UsersTable:
                         or_(
                             User.name.ilike(f'%{query_key}%'),
                             User.email.ilike(f'%{query_key}%'),
+                            User.username.ilike(f'%{query_key}%'),
                         )
                     )
 

@@ -787,6 +787,12 @@ def get_embedding_function(
     if embedding_engine == '':
         # Sentence transformers: CPU-bound sync operation
         async def async_embedding_function(query, prefix=None, user=None):
+            if embedding_function is None:
+                raise RuntimeError(
+                    'Embedding model is not loaded. '
+                    'Ensure the local model exists under embedding_model '
+                    'or configure an external embedding engine.'
+                )
             return await asyncio.to_thread(
                 (
                     lambda query, prefix=None: embedding_function.encode(

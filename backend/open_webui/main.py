@@ -58,6 +58,7 @@ from starsessions import (
 from starsessions.stores.redis import RedisStore
 
 from open_webui.utils import logger
+from open_webui.utils.static_files import SPAStaticFiles
 from open_webui.utils.audit import AuditLevel, AuditLoggingMiddleware
 from open_webui.utils.logger import start_logger
 from open_webui.socket.main import (
@@ -576,21 +577,6 @@ if SAFE_MODE:
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
 log = logging.getLogger(__name__)
-
-
-class SPAStaticFiles(StaticFiles):
-    async def get_response(self, path: str, scope):
-        try:
-            return await super().get_response(path, scope)
-        except (HTTPException, StarletteHTTPException) as ex:
-            if ex.status_code == 404:
-                if path.endswith('.js'):
-                    # Return 404 for javascript files
-                    raise ex
-                else:
-                    return await super().get_response('index.html', scope)
-            else:
-                raise ex
 
 
 if LOG_FORMAT != 'json':

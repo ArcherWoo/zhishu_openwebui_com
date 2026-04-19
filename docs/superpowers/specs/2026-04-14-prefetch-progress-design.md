@@ -1,43 +1,43 @@
-# Prefetch Progress Feedback Design
+﻿# 预取进度反馈设计
 
-## Goal
+## 目标
 
-Make `prefetch_vendor_deps.py` feel alive while it runs, especially during long `pip` and `npm` operations that currently produce no visible terminal output for extended periods.
+让 `prefetch_vendor_deps.py` 在运行时更有“活着”的感觉，尤其是在当前长时间没有任何可见终端输出的 `pip` 和 `npm` 操作期间。
 
-## Problem
+## 问题
 
-The script currently routes every subprocess through buffered capture. That preserves final error summaries, but it also means the terminal stays silent until each individual command exits. During slow downloads or validation passes, users cannot tell:
+脚本目前将所有子进程都通过缓冲捕获来处理。这虽然保留了最终的错误摘要，但也意味着终端会一直沉默，直到每个命令退出。在下载缓慢或校验过程较长时，用户无法判断：
 
-- which phase is running
-- which package is being processed
-- whether the script is still healthy
-- whether they should wait or interrupt it
+- 当前正在执行哪个阶段
+- 正在处理哪个包
+- 脚本是否仍然健康运行
+- 应该继续等待还是中断它
 
-## Requirements
+## 需求
 
-1. Show progress before each major step and package-level operation.
-2. Emit periodic heartbeat logs while a subprocess is still running.
-3. Keep the existing structured JSON/Markdown report behavior.
-4. Add a `--verbose` mode that streams child output live for deeper troubleshooting.
-5. Preserve failure tolerance: the script must continue through later checks/downloads even if earlier items fail.
+1. 在每个主要步骤和包级操作前显示进度。
+2. 当子进程仍在运行时，周期性输出心跳日志。
+3. 保留现有的结构化 JSON/Markdown 报告行为。
+4. 增加 `--verbose` 模式，用于实时流式输出子进程内容，方便深度排障。
+5. 保持容错特性：即使前面的检查/下载失败，脚本也必须继续执行后续项目。
 
-## Design
+## 设计
 
-- Introduce a dedicated prefetch logger with a `[prefetch]` prefix.
-- Replace the current fully-buffered subprocess helper with a tracked runner that:
-  - logs the phase name and package index before starting
-  - monitors the child process while it runs
-  - prints a heartbeat every N seconds when the child is still active
-  - captures combined output for the existing failure summaries
-  - optionally mirrors child output live when `--verbose` is enabled
-- Keep heartbeat timing conservative so normal fast commands are not noisy.
-- Reuse the tracked runner for Python direct checks, Python bundle downloads/probes, Python full validation, NPM cache prefetch, and NPM offline validation.
+- 引入一个专用的预取日志器，前缀为 `[prefetch]`。
+- 用一个带跟踪能力的运行器替换当前完全缓冲的子进程辅助函数，该运行器需要：
+  - 在启动前记录阶段名称和包序号
+  - 在运行期间监控子进程
+  - 当子进程仍然活跃时，每隔 N 秒打印一次心跳
+  - 捕获合并后的输出，延续现有失败摘要能力
+  - 在启用 `--verbose` 时，可选择实时镜像子进程输出
+- 将心跳频率保持得相对克制，避免普通快速命令产生噪音。
+- 在以下场景中复用该跟踪运行器：Python 直接检查、Python 资源包下载/探测、Python 全量校验、NPM 缓存预取，以及 NPM 离线校验。
 
-## Testing
+## 测试
 
-- Add tests for argument parsing with `--verbose`.
-- Add tests for tracked command logging:
-  - start/progress log
-  - heartbeat log
-  - verbose child output passthrough
-- Run the focused prefetch/start test suite after implementation.
+- 为 `--verbose` 参数解析添加测试。
+- 为跟踪命令日志添加测试：
+  - 启动/进度日志
+  - 心跳日志
+  - verbose 子进程输出透传
+- 实现后运行聚焦的 prefetch/start 测试集。

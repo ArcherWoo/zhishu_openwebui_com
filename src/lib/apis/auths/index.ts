@@ -254,7 +254,7 @@ export const updateLdapServer = async (token: string = '', body: object) => {
 	return res;
 };
 
-export const userSignIn = async (email: string, password: string) => {
+export const userSignIn = async (identifier: string, password: string) => {
 	let error = null;
 
 	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/signin`, {
@@ -264,7 +264,7 @@ export const userSignIn = async (email: string, password: string) => {
 		},
 		credentials: 'include',
 		body: JSON.stringify({
-			email: email,
+			email: identifier,
 			password: password
 		})
 	})
@@ -358,6 +358,7 @@ export const addUser = async (
 	email: string,
 	password: string,
 	role: string = 'pending',
+	username: null | string = null,
 	profile_image_url: null | string = null
 ) => {
 	let error = null;
@@ -373,6 +374,7 @@ export const addUser = async (
 			email: email,
 			password: password,
 			role: role,
+			...(username && { username: username }),
 			...(profile_image_url && { profile_image_url: profile_image_url })
 		})
 	})

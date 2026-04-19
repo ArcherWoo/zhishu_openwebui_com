@@ -52,6 +52,12 @@ def test_browser_url_prefers_localhost_for_wildcard_host():
     assert start.browser_url('0.0.0.0', 8080) == 'http://localhost:8080'
 
 
+def test_parse_args_defaults_to_port_4173():
+    args = start.parse_args([])
+
+    assert args.port == 4173
+
+
 def test_collect_lan_ipv4_addresses_prefers_private_ipv4_addresses(monkeypatch):
     addresses = [
         (socket.AF_INET, None, None, None, ('127.0.0.1', 0)),

@@ -1,22 +1,22 @@
-# Disable Ollama By Default Implementation Plan
+﻿# 默认禁用 Ollama 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **给代理工作者：** 必须使用子技能 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans`，按任务逐项落实本计划。步骤使用复选框语法（`- [ ]`）进行跟踪。
 
-**Goal:** Disable Ollama by default, stop default localhost probing, and hide Ollama UI when disabled while preserving admin model-management access.
+**目标：** 默认禁用 Ollama，停止默认的 localhost 探测，并在禁用时隐藏 Ollama UI，同时保留管理员的模型管理访问能力。
 
-**Architecture:** The backend becomes the source of truth by defaulting `ENABLE_OLLAMA_API` to `False` and exporting that state through `/api/config`. The frontend consumes that feature flag to suppress Ollama-only UI without altering admin access to workspace model pages.
+**架构：** 后端成为唯一真实来源：将 `ENABLE_OLLAMA_API` 默认设为 `False`，并通过 `/api/config` 导出该状态。前端消费这个功能开关，在不改变管理员访问工作区模型页面权限的前提下，屏蔽仅 Ollama 相关的 UI。
 
-**Tech Stack:** Python, FastAPI, Svelte, TypeScript, Vitest-free frontend verification via `svelte-check`, Pytest.
+**技术栈：** Python、FastAPI、Svelte、TypeScript、通过 `svelte-check` 做无 Vitest 的前端验证、Pytest。
 
 ---
 
-### Task 1: Add Failing Backend Regression Test
+### 任务 1：添加失败中的后端回归测试
 
-**Files:**
-- Create: `tests/test_ollama_disable_config.py`
-- Test: `tests/test_ollama_disable_config.py`
+**文件：**
+- 创建：`tests/test_ollama_disable_config.py`
+- 测试：`tests/test_ollama_disable_config.py`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **步骤 1：编写失败中的测试**
 
 ```python
 from pathlib import Path
@@ -33,12 +33,12 @@ def test_ollama_is_disabled_by_default_and_exposed_to_frontend():
     assert "'enable_ollama_api': app.state.config.ENABLE_OLLAMA_API" in main_source
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2：运行测试，确认它按预期失败**
 
-Run: `.\\.venv\\Scripts\\python.exe -m pytest tests/test_ollama_disable_config.py -q`
-Expected: `FAIL` because the backend still defaults Ollama to `True` and `/api/config` does not yet expose `enable_ollama_api`.
+运行：`.\.venv\Scripts\python.exe -m pytest tests/test_ollama_disable_config.py -q`
+预期：`FAIL`，因为后端当前仍将 Ollama 默认设为 `True`，且 `/api/config` 还没有暴露 `enable_ollama_api`。
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **步骤 3：编写最小实现**
 
 ```python
 ENABLE_OLLAMA_API = PersistentConfig(
@@ -52,34 +52,34 @@ ENABLE_OLLAMA_API = PersistentConfig(
 'enable_ollama_api': app.state.config.ENABLE_OLLAMA_API,
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 4：再次运行测试，确认通过**
 
-Run: `.\\.venv\\Scripts\\python.exe -m pytest tests/test_ollama_disable_config.py -q`
-Expected: `1 passed`
+运行：`.\.venv\Scripts\python.exe -m pytest tests/test_ollama_disable_config.py -q`
+预期：`1 passed`
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add tests/test_ollama_disable_config.py backend/open_webui/config.py backend/open_webui/main.py
 git commit -m "Disable Ollama by default"
 ```
 
-### Task 2: Hide Ollama UI Behind Backend Feature Flag
+### 任务 2：用后端功能开关隐藏 Ollama UI
 
-**Files:**
-- Modify: `src/lib/stores/index.ts`
-- Modify: `src/lib/components/admin/Settings/Connections.svelte`
-- Modify: `src/lib/components/admin/Settings/Models/ManageModelsModal.svelte`
-- Modify: `src/lib/components/chat/Settings/About.svelte`
-- Modify: `src/lib/components/admin/Settings/Documents.svelte`
+**文件：**
+- 修改：`src/lib/stores/index.ts`
+- 修改：`src/lib/components/admin/Settings/Connections.svelte`
+- 修改：`src/lib/components/admin/Settings/Models/ManageModelsModal.svelte`
+- 修改：`src/lib/components/chat/Settings/About.svelte`
+- 修改：`src/lib/components/admin/Settings/Documents.svelte`
 
-- [ ] **Step 1: Add the frontend config type field**
+- [ ] **步骤 1：补充前端配置类型字段**
 
 ```ts
 enable_ollama_api?: boolean;
 ```
 
-- [ ] **Step 2: Gate the admin Connections Ollama section**
+- [ ] **步骤 2：为管理员 Connections 中的 Ollama 区块加开关**
 
 ```svelte
 {#if $config?.features?.enable_ollama_api}
@@ -87,7 +87,7 @@ enable_ollama_api?: boolean;
 {/if}
 ```
 
-- [ ] **Step 3: Gate the Manage Models modal**
+- [ ] **步骤 3：为模型管理弹窗加开关**
 
 ```svelte
 if (ollamaConfig?.ENABLE_OLLAMA_API) {
@@ -98,7 +98,7 @@ if (ollamaConfig?.ENABLE_OLLAMA_API) {
 selected = '';
 ```
 
-- [ ] **Step 4: Skip the About-page Ollama version request when disabled**
+- [ ] **步骤 4：在禁用时跳过关于页面的 Ollama 版本请求**
 
 ```svelte
 if ($config?.features?.enable_ollama_api) {
@@ -106,7 +106,7 @@ if ($config?.features?.enable_ollama_api) {
 }
 ```
 
-- [ ] **Step 5: Remove the disabled Ollama embedding choice**
+- [ ] **步骤 5：移除被禁用状态下的 Ollama 嵌入选项**
 
 ```svelte
 {#if $config?.features?.enable_ollama_api}
@@ -121,46 +121,46 @@ if (!$config?.features?.enable_ollama_api && RAG_EMBEDDING_ENGINE === 'ollama') 
 }
 ```
 
-- [ ] **Step 6: Run frontend verification**
+- [ ] **步骤 6：运行前端验证**
 
-Run: `npm run check`
-Expected: `svelte-check` completes without new errors in the modified files.
+运行：`npm run check`
+预期：`svelte-check` 在修改的文件上没有新增错误。
 
-- [ ] **Step 7: Commit**
+- [ ] **步骤 7：提交**
 
 ```bash
 git add src/lib/stores/index.ts src/lib/components/admin/Settings/Connections.svelte src/lib/components/admin/Settings/Models/ManageModelsModal.svelte src/lib/components/chat/Settings/About.svelte src/lib/components/admin/Settings/Documents.svelte
 git commit -m "Hide Ollama UI when disabled"
 ```
 
-### Task 3: Final Verification
+### 任务 3：最终验证
 
-**Files:**
-- Modify: none
-- Test: `tests/test_ollama_disable_config.py`
-- Test: `tests/test_start.py`
+**文件：**
+- 修改：无
+- 测试：`tests/test_ollama_disable_config.py`
+- 测试：`tests/test_start.py`
 
-- [ ] **Step 1: Run backend regression tests**
+- [ ] **步骤 1：运行后端回归测试**
 
-Run: `.\\.venv\\Scripts\\python.exe -m pytest tests/test_ollama_disable_config.py tests/test_start.py -q`
-Expected: all tests pass.
+运行：`.\.venv\Scripts\python.exe -m pytest tests/test_ollama_disable_config.py tests/test_start.py -q`
+预期：所有测试通过。
 
-- [ ] **Step 2: Run syntax verification**
+- [ ] **步骤 2：运行语法验证**
 
-Run: `.\\.venv\\Scripts\\python.exe -m py_compile backend\\open_webui\\config.py backend\\open_webui\\main.py`
-Expected: no output and exit code `0`.
+运行：`.\.venv\Scripts\python.exe -m py_compile backend\open_webui\config.py backend\open_webui\main.py`
+预期：无输出，退出码为 `0`。
 
-- [ ] **Step 3: Run frontend verification**
+- [ ] **步骤 3：运行前端验证**
 
-Run: `npm run check`
-Expected: no new `svelte-check` errors.
+运行：`npm run check`
+预期：没有新增 `svelte-check` 错误。
 
-- [ ] **Step 4: Review worktree**
+- [ ] **步骤 4：检查工作区状态**
 
-Run: `git status --short`
-Expected: only intended modified files appear before the final commit, then a clean worktree after commit.
+运行：`git status --short`
+预期：最终提交前只出现预期修改的文件；提交后工作区干净。
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交**
 
 ```bash
 git add docs/superpowers/specs/2026-04-13-disable-ollama-design.md docs/superpowers/plans/2026-04-13-disable-ollama.md

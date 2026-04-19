@@ -1,62 +1,62 @@
-# Pyodide Cache Reuse Design
+﻿# Pyodide 缓存复用设计
 
-## Goal
+## 目标
 
-Stop `scripts/prepare-pyodide.js` from re-downloading the full Pyodide package set on every build when the local cache is already complete.
+避免 `scripts/prepare-pyodide.js` 在本地缓存已经完整时，仍然在每次构建都重新下载整套 Pyodide 包。
 
-## Problem
+## 问题
 
-- The script compares the cached version against the semver range in `package.json` instead of the real installed `node_modules/pyodide` version.
-- The script always enters the Pyodide install flow before deciding whether the cache is reusable.
-- The script deletes the cache with deprecated `fs.rmdir(..., { recursive: true })`.
-- There is no persisted cache metadata describing which PyPI wheels were successfully mirrored.
+- 脚本当前拿缓存中的版本去和 `package.json` 中的 semver 范围比较，而不是和真实安装的 `node_modules/pyodide` 版本比较。
+- 脚本总是在判断缓存是否可复用之前就进入 Pyodide 安装流程。
+- 脚本使用了已弃用的 `fs.rmdir(..., { recursive: true })` 来删除缓存。
+- 当前没有持久化的缓存元数据来描述哪些 PyPI wheel 已成功镜像。
 
-## Desired Behavior
+## 期望行为
 
-- Read the actual installed Pyodide version from `node_modules/pyodide/package.json`.
-- Validate `static/pyodide/` before calling `loadPyodide`.
-- Skip the fetch/install flow entirely when the cache is complete.
-- Only clear `static/pyodide/` when the cached Pyodide runtime version is stale.
-- Persist cache metadata after a successful refresh so later runs can safely reuse the cache.
+- 从 `node_modules/pyodide/package.json` 读取真实安装的 Pyodide 版本。
+- 在调用 `loadPyodide` 之前先校验 `static/pyodide/`。
+- 当缓存完整时，完全跳过抓取/安装流程。
+- 只有当缓存中的 Pyodide 运行时版本过期时，才清空 `static/pyodide/`。
+- 在刷新成功后持久化缓存元数据，供后续运行安全复用。
 
-## Design
+## 设计
 
-### Cache Metadata
+### 缓存元数据
 
-Write `static/pyodide/open-webui-pyodide-cache.json` after a successful refresh. The file stores:
+在成功刷新后写入 `static/pyodide/open-webui-pyodide-cache.json`。该文件包含：
 
-- Schema version
-- Installed Pyodide version
-- Requested Pyodide package list
-- Requested PyPI wheel package list
-- Downloaded PyPI wheel filenames
+- Schema 版本
+- 已安装的 Pyodide 版本
+- 请求的 Pyodide 包列表
+- 请求的 PyPI wheel 包列表
+- 已下载的 PyPI wheel 文件名列表
 
-### Validation Rules
+### 校验规则
 
-The cache is reusable only when all conditions are met:
+只有在以下条件全部满足时，缓存才可复用：
 
-- Cache metadata exists and matches the current requested package sets.
-- The cached Pyodide version matches `node_modules/pyodide`.
-- All core files from `node_modules/pyodide` exist in `static/pyodide`.
-- All wheel filenames recorded in the cache metadata exist in `static/pyodide`.
+- 缓存元数据存在，并且与当前请求的包集合一致。
+- 缓存中的 Pyodide 版本与 `node_modules/pyodide` 一致。
+- `node_modules/pyodide` 的所有核心文件都存在于 `static/pyodide` 中。
+- 缓存元数据中记录的所有 wheel 文件名都存在于 `static/pyodide` 中。
 
-### Refresh Rules
+### 刷新规则
 
-- If the cached runtime version is stale, remove `static/pyodide/` with `fs.rm(..., { recursive: true, force: true })`.
-- If metadata is missing or incomplete but the runtime version is still current, keep the directory and top it up.
-- Only write cache metadata when the Pyodide and PyPI download steps both succeed.
+- 如果缓存的运行时版本过期，使用 `fs.rm(..., { recursive: true, force: true })` 删除 `static/pyodide/`。
+- 如果元数据缺失或不完整，但运行时版本仍然是当前版本，则保留目录并进行补齐。
+- 只有当 Pyodide 和 PyPI 的下载步骤都成功时，才写入缓存元数据。
 
-## Testing Strategy
+## 测试策略
 
-- Add a small pure helper module for cache validation.
-- Add Vitest regression coverage for:
-  - successful cache reuse
-  - version mismatch invalidation
-  - missing wheel invalidation
-  - package list mismatch invalidation
+- 为缓存校验增加一个小型纯辅助模块。
+- 添加 Vitest 回归覆盖，验证：
+  - 成功复用缓存
+  - 版本不匹配导致失效
+  - 缺失 wheel 导致失效
+  - 包列表不匹配导致失效
 
-## Success Criteria
+## 成功标准
 
-- The first repair run rebuilds or completes the cache and writes metadata.
-- A second run prints a cache-hit message and skips the expensive install flow.
-- No deprecation warning remains for recursive cache deletion.
+- 第一次修复性运行会重建或补齐缓存，并写入元数据。
+- 第二次运行会打印缓存命中消息，并跳过高开销的安装流程。
+- 递归删除缓存时不再出现弃用警告。
