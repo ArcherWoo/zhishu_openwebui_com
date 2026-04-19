@@ -53,6 +53,11 @@ PYTHON_VENDOR_DIR = VENDOR_DIR / 'python'
 NPM_VENDOR_DIR = VENDOR_DIR / 'npm'
 VENDOR_REPORT_JSON = VENDOR_DIR / 'report.json'
 VENDOR_REPORT_MD = VENDOR_DIR / 'report.md'
+PYODIDE_RUNTIME_DIR = ROOT / 'pyodide_runtime'
+PYODIDE_STATIC_DIR = ROOT / 'static' / 'pyodide'
+PYODIDE_LOCK_FILE = PYODIDE_STATIC_DIR / 'pyodide-lock.json'
+PYODIDE_RESTORE_SCRIPT = ROOT / 'scripts' / 'restore-pyodide-release.ps1'
+PYODIDE_RUNTIME_README = PYODIDE_RUNTIME_DIR / 'README.md'
 SCRIPT_STATE_VERSION = 1
 GRACEFUL_STOP_TIMEOUT = 8.0
 MANAGED_PROCESS_POLL_INTERVAL = 0.2
@@ -1056,7 +1061,12 @@ def ensure_frontend_build(
         return
 
     if args.force_frontend_build or frontend_needs_build():
-        run([npm_executable, 'run', 'build'], env=npm_env)
+        try:
+            run([npm_executable, 'run', 'build'], env=npm_env)
+        except subprocess.CalledProcessError:
+            if should_log_pyodide_offline_guidance():
+                log_pyodide_offline_guidance('npm run build')
+            raise
         BUILD_DIR.mkdir(parents=True, exist_ok=True)
         BUILD_MARKER.write_text('built by start.py\n', encoding='utf-8')
     else:
@@ -1329,6 +1339,27 @@ def frontend_node_modules_complete() -> bool:
     return True
 
 
+def should_log_pyodide_offline_guidance() -> bool:
+    node_pyodide_package = ROOT / 'node_modules' / 'pyodide' / 'package.json'
+    return (not node_pyodide_package.exists()) or (not PYODIDE_LOCK_FILE.exists())
+
+
+def format_pyodide_offline_guidance(*, stage: str) -> list[str]:
+    return [
+        f'{stage} 失败，检测到当前仓库缺少完整的 Pyodide 离线资源。',
+        '公司内网部署请先在外网机器准备 Pyodide Release 附件，再恢复到当前仓库：',
+        f'- npm 离线缓存目录：{NPM_VENDOR_DIR}',
+        f'- Pyodide 运行时目录：{PYODIDE_STATIC_DIR}',
+        f'- 恢复脚本：powershell -ExecutionPolicy Bypass -File "{PYODIDE_RESTORE_SCRIPT}" -ArchivePath "<zip路径>"',
+        f'- 详细说明：{PYODIDE_RUNTIME_README}',
+    ]
+
+
+def log_pyodide_offline_guidance(stage: str) -> None:
+    for line in format_pyodide_offline_guidance(stage=stage):
+        log(line)
+
+
 def requirements_signature() -> dict[str, str]:
     return {
         **python_requirements_signature(),
@@ -1460,14 +1491,19 @@ def ensure_frontend_dependencies(
             npm_executable,
             NPM_VENDOR_DIR,
         )
-        run_with_vendor_fallback(
-            local_only_command,
-            fallback_command,
-            vendor_dir=NPM_VENDOR_DIR,
-            env=npm_env,
-            local_label='前端 npm 本地缓存安装',
-            fallback_label='镜像源或在线 npm 安装',
-        )
+        try:
+            run_with_vendor_fallback(
+                local_only_command,
+                fallback_command,
+                vendor_dir=NPM_VENDOR_DIR,
+                env=npm_env,
+                local_label='前端 npm 本地缓存安装',
+                fallback_label='镜像源或在线 npm 安装',
+            )
+        except subprocess.CalledProcessError:
+            if should_log_pyodide_offline_guidance():
+                log_pyodide_offline_guidance('npm ci')
+            raise
         state['node'] = expected
         save_state(state)
     else:

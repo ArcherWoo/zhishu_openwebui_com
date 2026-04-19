@@ -12,6 +12,9 @@ nltk_data/*
 !nltk_data/README.md
 embedding_model/*
 !embedding_model/README.md
+pyodide_runtime/*
+!pyodide_runtime/README.md
+vendor/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .start-state.json

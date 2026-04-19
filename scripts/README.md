@@ -122,6 +122,56 @@ powershell -ExecutionPolicy Bypass -File .\scripts\package-nltk-data-release.ps1
 - 这是一个 Node.js 脚本
 - 执行前请确认本机 Node 环境可用，并且项目依赖已安装
 
+## 5. package-pyodide-release.ps1
+
+用途：
+
+- 把 `vendor/npm/` 和 `static/pyodide/` 一起打成一个适合上传到 GitHub Release 的 zip
+- 解决公司内网里 npm 源缺少 `pyodide` 时，无法顺利 `python start.py` 的问题
+
+为什么不是只打包 `static/pyodide/`：
+
+- 因为 `pyodide` 报错虽然最显眼，但真正先失败的往往是 `npm ci`
+- 所以要把前端 npm 离线缓存 `vendor/npm/` 一起带上
+
+常用命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\package-pyodide-release.ps1
+```
+
+如果你想固定覆盖一个 latest 包名：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\package-pyodide-release.ps1 -OverwriteLatest
+```
+
+输出位置：
+
+- `dist/releases/pyodide-offline-runtime-*.zip`
+- `dist/releases/pyodide-offline-runtime-*.sha256`
+- `dist/releases/pyodide-offline-runtime-*.txt`
+
+## 6. restore-pyodide-release.ps1
+
+用途：
+
+- 把外网打好的 Pyodide 离线 zip 恢复到当前仓库
+- 目标目录是：
+  - `vendor/npm/`
+  - `static/pyodide/`
+
+常用命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\restore-pyodide-release.ps1 -ArchivePath .\pyodide_runtime\pyodide-offline-runtime-latest.zip
+```
+
+恢复完成后：
+
+- 就可以继续执行 `python start.py`
+- 如果 `start.py` 里提示缺少 Pyodide 离线资源，也会引导到这个脚本和 `pyodide_runtime/README.md`
+
 ## 建议
 
 如果后面这个目录继续增加脚本，建议每加一个脚本就顺手把下面三件事补上：

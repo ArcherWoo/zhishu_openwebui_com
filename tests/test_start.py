@@ -179,6 +179,72 @@ def test_ensure_frontend_dependencies_reinstalls_when_node_modules_is_incomplete
     assert saved_state['node'] == expected_signature
 
 
+def test_format_pyodide_offline_guidance_mentions_restore_paths():
+    guidance = start.format_pyodide_offline_guidance(stage='npm ci')
+
+    assert any('npm ci' in line for line in guidance)
+    assert any('vendor' in line and 'npm' in line for line in guidance)
+    assert any('static' in line and 'pyodide' in line for line in guidance)
+    assert any('restore-pyodide-release.ps1' in line for line in guidance)
+    assert any('pyodide_runtime' in line and 'README.md' in line for line in guidance)
+
+
+def test_ensure_frontend_dependencies_logs_pyodide_guidance_on_failure(monkeypatch):
+    expected_signature = {
+        'state_version': start.SCRIPT_STATE_VERSION,
+        'package_lock_mtime': '33',
+        'package_json_mtime': '22',
+    }
+    guidance_calls = []
+
+    monkeypatch.setattr(start, 'load_state', lambda: {'node': {}})
+    monkeypatch.setattr(start, 'save_state', lambda _state: None)
+    monkeypatch.setattr(start, 'node_requirements_signature', lambda: expected_signature | {})
+    monkeypatch.setattr(start, 'frontend_node_modules_complete', lambda: False)
+    monkeypatch.setattr(
+        start,
+        'build_npm_install_commands',
+        lambda npm_executable, vendor_dir: (['npm.cmd', 'ci', '--offline'], ['npm.cmd', 'ci']),
+    )
+    monkeypatch.setattr(
+        start,
+        'run_with_vendor_fallback',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            start.subprocess.CalledProcessError(returncode=1, cmd=['npm.cmd', 'ci'])
+        ),
+    )
+    monkeypatch.setattr(start, 'should_log_pyodide_offline_guidance', lambda: True)
+    monkeypatch.setattr(start, 'log_pyodide_offline_guidance', lambda stage: guidance_calls.append(stage))
+
+    args = SimpleNamespace(backend_only=False, force_node_install=False)
+
+    with pytest.raises(start.subprocess.CalledProcessError):
+        start.ensure_frontend_dependencies('npm.cmd', args, {})
+
+    assert guidance_calls == ['npm ci']
+
+
+def test_ensure_frontend_build_logs_pyodide_guidance_on_failure(monkeypatch):
+    guidance_calls = []
+    monkeypatch.setattr(start, 'frontend_needs_build', lambda: True)
+    monkeypatch.setattr(
+        start,
+        'run',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            start.subprocess.CalledProcessError(returncode=1, cmd=['npm.cmd', 'run', 'build'])
+        ),
+    )
+    monkeypatch.setattr(start, 'should_log_pyodide_offline_guidance', lambda: True)
+    monkeypatch.setattr(start, 'log_pyodide_offline_guidance', lambda stage: guidance_calls.append(stage))
+
+    args = SimpleNamespace(backend_only=False, force_frontend_build=False)
+
+    with pytest.raises(start.subprocess.CalledProcessError):
+        start.ensure_frontend_build('npm.cmd', args, {})
+
+    assert guidance_calls == ['npm run build']
+
+
 def test_launch_open_webui_logs_browser_and_lan_urls(monkeypatch, capsys):
     prepared = start.PreparedRuntime(
         base_python='python',
