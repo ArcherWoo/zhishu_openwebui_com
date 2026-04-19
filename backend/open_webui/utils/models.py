@@ -452,9 +452,9 @@ def get_filtered_models(models, user, db=None):
                     or model['id'] in accessible_model_ids
                 ):
                     filtered_models.append(model)
-            elif user.role == 'admin':
-                # No DB entry means no access control configured yet;
-                # only admins can see unconfigured models.
+            else:
+                # No DB entry means no access control has been configured yet.
+                # Keep provider-discovered models visible to authenticated users.
                 filtered_models.append(model)
 
         return filtered_models

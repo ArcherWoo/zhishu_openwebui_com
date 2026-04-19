@@ -39,6 +39,7 @@
 	import { blobToFile, isYoutubeUrl } from '$lib/utils';
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import Markdown from '$lib/components/chat/Messages/Markdown.svelte';
 	import Files from './KnowledgeBase/Files.svelte';
 	import AddFilesPlaceholder from '$lib/components/AddFilesPlaceholder.svelte';
 
@@ -87,6 +88,7 @@
 	let selectedFileId = null;
 	let selectedFile = null;
 	let selectedFileContent = '';
+	let selectedFileViewMode: 'preview' | 'edit' = 'preview';
 
 	let inputFiles = null;
 
@@ -172,14 +174,15 @@
 		try {
 			selectedFile = file;
 			selectedFileContent = selectedFile?.data?.content || '';
+			selectedFileViewMode = 'preview';
 		} catch (e) {
 			toast.error($i18n.t('Failed to load file content.'));
 		}
 	};
 
 	const createFileFromText = (name, content) => {
-		const blob = new Blob([content], { type: 'text/plain' });
-		const file = blobToFile(blob, `${name}.txt`);
+		const blob = new Blob([content], { type: 'text/markdown' });
+		const file = blobToFile(blob, `${name}.md`);
 
 		console.log(file);
 		return file;
@@ -597,6 +600,7 @@
 				selectedFileId = null;
 				selectedFile = null;
 				selectedFileContent = '';
+				selectedFileViewMode = 'preview';
 
 				await init();
 			}
@@ -1072,6 +1076,8 @@
 							onClose={() => {
 								selectedFileId = null;
 								selectedFile = null;
+								selectedFileContent = '';
+								selectedFileViewMode = 'preview';
 							}}
 						>
 							<div class="flex flex-col justify-start h-full max-h-full">
@@ -1084,6 +1090,8 @@
 												on:click={() => {
 													selectedFileId = null;
 													selectedFile = null;
+													selectedFileContent = '';
+													selectedFileViewMode = 'preview';
 												}}
 											>
 												<ChevronLeft strokeWidth="2.5" />
@@ -1093,7 +1101,7 @@
 											{selectedFile?.meta?.name}
 										</div>
 
-										{#if knowledge?.write_access}
+										{#if knowledge?.write_access && selectedFileViewMode === 'edit'}
 											<div>
 												<button
 													class="flex self-center w-fit text-sm py-1 px-2.5 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1113,14 +1121,58 @@
 										{/if}
 									</div>
 
+									<div class="shrink-0 px-3 pb-2">
+										<div class="inline-flex rounded-lg bg-gray-100 dark:bg-gray-850 p-1">
+											<button
+												type="button"
+												class="px-3 py-1.5 text-sm rounded-md transition {selectedFileViewMode === 'preview'
+													? 'bg-white dark:bg-gray-800 shadow-sm text-gray-900 dark:text-gray-100'
+													: 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
+												on:click={() => {
+													selectedFileViewMode = 'preview';
+												}}
+											>
+												{$i18n.t('Preview')}
+											</button>
+											<button
+												type="button"
+												class="px-3 py-1.5 text-sm rounded-md transition {selectedFileViewMode === 'edit'
+													? 'bg-white dark:bg-gray-800 shadow-sm text-gray-900 dark:text-gray-100'
+													: 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
+												on:click={() => {
+													selectedFileViewMode = 'edit';
+												}}
+											>
+												{$i18n.t('Edit')}
+											</button>
+										</div>
+									</div>
+
 									{#key selectedFile.id}
-										<textarea
-											class="w-full h-full text-sm outline-none resize-none px-3 py-2"
-											bind:value={selectedFileContent}
-											disabled={!knowledge?.write_access}
-											aria-label={$i18n.t('File content')}
-											placeholder={$i18n.t('Add content here')}
-										/>
+										{#if selectedFileViewMode === 'preview'}
+											<div class="w-full h-full overflow-y-auto px-3 py-2">
+												{#if selectedFileContent.trim()}
+													<div class="markdown-prose-sm max-w-none">
+														<Markdown
+															id={`knowledge-file-preview-${selectedFile.id}`}
+															content={selectedFileContent}
+														/>
+													</div>
+												{:else}
+													<div class="text-sm text-gray-500 dark:text-gray-400">
+														{$i18n.t('No content found')}
+													</div>
+												{/if}
+											</div>
+										{:else}
+											<textarea
+												class="w-full h-full text-sm outline-none resize-none px-3 py-2"
+												bind:value={selectedFileContent}
+												disabled={!knowledge?.write_access}
+												aria-label={$i18n.t('File content')}
+												placeholder={$i18n.t('Add content here')}
+											/>
+										{/if}
 									{/key}
 								</div>
 							</div>

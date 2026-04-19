@@ -4,6 +4,7 @@ import uuid
 import time
 import datetime
 import logging
+from types import SimpleNamespace
 from aiohttp import ClientSession
 import urllib
 
@@ -70,11 +71,12 @@ from open_webui.utils.auth import (
     get_password_hash,
     get_http_authorization_cred,
 )
-from open_webui.internal.db import get_session
+from open_webui.internal.db import get_db, get_session
 from sqlalchemy.orm import Session
 from open_webui.utils.webhook import post_webhook
 from open_webui.utils.access_control import get_permissions, has_permission
 from open_webui.utils.groups import apply_default_group_assignment
+from open_webui.utils.default_knowledge_initializer import ensure_default_knowledge_templates_for_user
 
 from open_webui.utils.redis import get_redis_client
 from open_webui.utils.rate_limit import RateLimiter
@@ -94,6 +96,30 @@ log = logging.getLogger(__name__)
 # Forgive us our failed attempts, as we forgive those
 # who exceed their allotted rate against this gate.
 signin_rate_limiter = RateLimiter(redis_client=get_redis_client(), limit=5 * 3, window=60 * 3)
+
+
+async def ensure_default_knowledge_templates_for_user_safe(
+    request: Request,
+    user,
+    db: Session | None = None,
+) -> None:
+    try:
+        await ensure_default_knowledge_templates_for_user(request, user, db=db)
+    except Exception as exc:
+        log.warning('Failed to seed default knowledge templates for user %s: %s', user.id, exc)
+
+
+def schedule_default_knowledge_template_seed(request: Request, user: UserModel) -> None:
+    request_proxy = SimpleNamespace(app=request.app)
+
+    async def _seed() -> None:
+        try:
+            with get_db() as db:
+                await ensure_default_knowledge_templates_for_user_safe(request_proxy, user, db=db)
+        except Exception as exc:
+            log.warning('Failed to seed default knowledge templates in background for user %s: %s', user.id, exc)
+
+    asyncio.create_task(_seed())
 
 
 def create_session_response(request: Request, user, db, response: Response = None, set_cookie: bool = False) -> dict:
@@ -169,6 +195,8 @@ async def get_session_user(
     user=Depends(get_current_user),
     db: Session = Depends(get_session),
 ):
+    await ensure_default_knowledge_templates_for_user_safe(request, user, db=db)
+
     auth_header = request.headers.get('Authorization')
     auth_token = get_http_authorization_cred(auth_header)
     token = auth_token.credentials
@@ -516,6 +544,7 @@ async def ldap_auth(
                     except Exception as e:
                         log.error(f'Failed to sync groups for user {user.id}: {e}')
 
+                await ensure_default_knowledge_templates_for_user_safe(request, user, db=db)
                 return create_session_response(request, user, db, response, set_cookie=True)
             else:
                 raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_CRED)
@@ -634,6 +663,7 @@ async def signin(
         )
 
     if user:
+        schedule_default_knowledge_template_seed(request, user)
         return create_session_response(request, user, db, response, set_cookie=True)
     else:
         raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_CRED)
@@ -700,6 +730,8 @@ async def signup_handler(
         user.id,
         db=db,
     )
+
+    await ensure_default_knowledge_templates_for_user_safe(request, user, db=db)
 
     return user
 
@@ -879,6 +911,8 @@ async def add_user(
                 user.id,
                 db=db,
             )
+
+            await ensure_default_knowledge_templates_for_user_safe(request, user, db=db)
 
             token = create_token(data={'id': user.id})
             return {
@@ -1295,4 +1329,5 @@ async def token_exchange(
             detail='User not found. Please sign in via the web interface first.',
         )
 
+    await ensure_default_knowledge_templates_for_user_safe(request, user, db=db)
     return create_session_response(request, user, db)

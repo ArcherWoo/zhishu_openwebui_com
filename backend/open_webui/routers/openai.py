@@ -468,6 +468,8 @@ async def get_filtered_models(models, user, db=None):
         if model_info:
             if user.id == model_info.user_id or model_info.id in accessible_model_ids:
                 filtered_models.append(model)
+        else:
+            filtered_models.append(model)
     return filtered_models
 
 

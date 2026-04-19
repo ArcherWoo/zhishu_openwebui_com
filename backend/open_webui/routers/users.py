@@ -40,6 +40,7 @@ from open_webui.utils.auth import (
     validate_password,
 )
 from open_webui.utils.access_control import get_permissions, has_permission
+from open_webui.utils.default_knowledge_initializer import seed_default_knowledge_templates_for_existing_users
 
 log = logging.getLogger(__name__)
 
@@ -417,6 +418,23 @@ async def update_user_info_by_session_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=ERROR_MESSAGES.USER_NOT_FOUND,
         )
+
+
+############################
+# Seed Default Knowledge Templates
+############################
+
+
+@router.post('/admin/default-knowledge/seed')
+async def seed_default_knowledge(request: Request, user=Depends(get_admin_user), db: Session = Depends(get_session)):
+    result = await seed_default_knowledge_templates_for_existing_users(request, db=db)
+    return {
+        'total_users': result.total_users,
+        'processed_users': result.processed_users,
+        'created_knowledge_bases': result.created_knowledge_bases,
+        'created_documents': result.created_documents,
+        'failed_users': result.failed_users,
+    }
 
 
 ############################

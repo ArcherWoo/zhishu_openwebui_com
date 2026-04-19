@@ -98,6 +98,29 @@ def test_python_dependency_cache_signature_ignores_frontend_inputs(monkeypatch):
     }
 
 
+def test_python_environment_signature_tracks_virtualenv_recreation(monkeypatch):
+    venv_python = Path('C:/repo/.venv/Scripts/python.exe')
+    base_python = 'C:/Python311/python.exe'
+
+    stat_map = {
+        os.path.normcase(os.path.normpath(str(venv_python))): SimpleNamespace(st_mtime_ns=44),
+        os.path.normcase(os.path.normpath(base_python)): SimpleNamespace(st_mtime_ns=55),
+    }
+
+    monkeypatch.setattr(Path, 'stat', lambda self: stat_map[os.path.normcase(os.path.normpath(str(self)))])
+    monkeypatch.setattr(
+        Path,
+        'exists',
+        lambda self: os.path.normcase(os.path.normpath(str(self))) in stat_map,
+    )
+
+    assert start.python_environment_signature(venv_python, base_python) == {
+        'base_python': str(Path(base_python).resolve()),
+        'venv_python': str(venv_python.resolve()),
+        'venv_python_mtime': '44',
+    }
+
+
 def test_node_dependency_cache_signature_tracks_only_node_inputs(monkeypatch):
     monkeypatch.setattr(start, 'PACKAGE_JSON', Path('C:/repo/package.json'))
     monkeypatch.setattr(start, 'PACKAGE_LOCK', Path('C:/repo/package-lock.json'))
@@ -118,6 +141,42 @@ def test_node_dependency_cache_signature_tracks_only_node_inputs(monkeypatch):
         'package_lock_mtime': '33',
         'package_json_mtime': '22',
     }
+
+
+def test_ensure_frontend_dependencies_reinstalls_when_node_modules_is_incomplete(monkeypatch):
+    expected_signature = {
+        'state_version': start.SCRIPT_STATE_VERSION,
+        'package_lock_mtime': '33',
+        'package_json_mtime': '22',
+    }
+    saved_state = {}
+    run_calls = []
+
+    monkeypatch.setattr(start, 'load_state', lambda: {'node': expected_signature.copy()})
+    monkeypatch.setattr(start, 'save_state', lambda state: saved_state.update(state))
+    monkeypatch.setattr(start, 'node_requirements_signature', lambda: expected_signature | {})
+    monkeypatch.setattr(start, 'frontend_node_modules_complete', lambda: False)
+    monkeypatch.setattr(
+        start,
+        'build_npm_install_commands',
+        lambda npm_executable, vendor_dir: (['npm.cmd', 'ci', '--offline'], ['npm.cmd', 'ci']),
+    )
+    monkeypatch.setattr(
+        start,
+        'run_with_vendor_fallback',
+        lambda local_only_command, fallback_command, **kwargs: run_calls.append(
+            (local_only_command, fallback_command, kwargs)
+        ),
+    )
+
+    args = SimpleNamespace(backend_only=False, force_node_install=False)
+
+    start.ensure_frontend_dependencies('npm.cmd', args, {'NPM_CONFIG_REGISTRY': 'https://registry.npmmirror.com'})
+
+    assert len(run_calls) == 1
+    assert run_calls[0][0] == ['npm.cmd', 'ci', '--offline']
+    assert run_calls[0][1] == ['npm.cmd', 'ci']
+    assert saved_state['node'] == expected_signature
 
 
 def test_launch_open_webui_logs_browser_and_lan_urls(monkeypatch, capsys):

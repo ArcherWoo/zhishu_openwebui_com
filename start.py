@@ -1311,6 +1311,24 @@ def node_requirements_signature() -> dict[str, str]:
     }
 
 
+def frontend_node_modules_complete() -> bool:
+    node_modules_dir = ROOT / 'node_modules'
+    if not node_modules_dir.exists():
+        return False
+
+    required_markers = [
+        node_modules_dir / 'pyodide' / 'package.json',
+        node_modules_dir / '@sveltejs' / 'kit' / 'package.json',
+    ]
+    missing = [str(path.relative_to(ROOT)) for path in required_markers if not path.exists()]
+
+    if missing:
+        log(f'妫€娴嬪埌涓嶅畬鏁寸殑 node_modules锛岀己灏? {", ".join(missing)}锛屽皢閲嶆柊鎵ц npm ci銆?')
+        return False
+
+    return True
+
+
 def requirements_signature() -> dict[str, str]:
     return {
         **python_requirements_signature(),
@@ -1362,6 +1380,14 @@ def capture(
     return result.stdout.strip()
 
 
+def python_environment_signature(venv_python: Path, base_python: str) -> dict[str, str]:
+    return {
+        'base_python': str(Path(base_python).resolve()),
+        'venv_python': str(venv_python.resolve()),
+        'venv_python_mtime': str(venv_python.stat().st_mtime_ns if venv_python.exists() else 0),
+    }
+
+
 def ensure_backend_dependencies(
     venv_python: Path,
     base_python: str,
@@ -1372,8 +1398,7 @@ def ensure_backend_dependencies(
     cached = state.get('python', {})
     expected = {
         'state_version': SCRIPT_STATE_VERSION,
-        'base_python': str(Path(base_python).resolve()),
-        'venv_python': str(venv_python.resolve()),
+        **python_environment_signature(venv_python, base_python),
         **python_requirements_signature(),
     }
 
@@ -1430,7 +1455,7 @@ def ensure_frontend_dependencies(
         **node_requirements_signature(),
     }
 
-    if args.force_node_install or cached != expected or not (ROOT / 'node_modules').exists():
+    if args.force_node_install or cached != expected or not frontend_node_modules_complete():
         local_only_command, fallback_command = build_npm_install_commands(
             npm_executable,
             NPM_VENDOR_DIR,

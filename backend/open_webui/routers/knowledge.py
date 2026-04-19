@@ -1062,7 +1062,7 @@ async def add_files_to_knowledge_batch(
 @router.get('/{id}/export')
 async def export_knowledge_by_id(id: str, user=Depends(get_admin_user), db: Session = Depends(get_session)):
     """
-    Export a knowledge base as a zip file containing .txt files.
+    Export a knowledge base as a zip file containing .md files.
     Admin only.
     """
 
@@ -1081,10 +1081,12 @@ async def export_knowledge_by_id(id: str, user=Depends(get_admin_user), db: Sess
         for file in files:
             content = file.data.get('content', '') if file.data else ''
             if content:
-                # Use original filename with .txt extension
+                # Export text content as markdown files for consistency.
                 filename = file.filename
-                if not filename.endswith('.txt'):
-                    filename = f'{filename}.txt'
+                if filename.endswith('.txt'):
+                    filename = f'{filename[:-4]}.md'
+                elif not filename.endswith('.md'):
+                    filename = f'{filename}.md'
                 zf.writestr(filename, content)
 
     zip_buffer.seek(0)

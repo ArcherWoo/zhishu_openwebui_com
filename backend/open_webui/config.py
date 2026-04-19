@@ -1258,23 +1258,23 @@ RESPONSE_WATERMARK = PersistentConfig(
 
 
 USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS = (
-    os.environ.get('USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS', 'False').lower() == 'true'
+    os.environ.get('USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS', 'True').lower() == 'true'
 )
 
 USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS = (
-    os.environ.get('USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS', 'False').lower() == 'true'
+    os.environ.get('USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS', 'True').lower() == 'true'
 )
 
 USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS = (
-    os.environ.get('USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS', 'False').lower() == 'true'
+    os.environ.get('USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS', 'True').lower() == 'true'
 )
 
 USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS = (
-    os.environ.get('USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS', 'False').lower() == 'true'
+    os.environ.get('USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS', 'True').lower() == 'true'
 )
 
 USER_PERMISSIONS_WORKSPACE_SKILLS_ACCESS = (
-    os.environ.get('USER_PERMISSIONS_WORKSPACE_SKILLS_ACCESS', 'False').lower() == 'true'
+    os.environ.get('USER_PERMISSIONS_WORKSPACE_SKILLS_ACCESS', 'True').lower() == 'true'
 )
 
 USER_PERMISSIONS_WORKSPACE_MODELS_IMPORT = (
@@ -1432,82 +1432,130 @@ USER_PERMISSIONS_FEATURES_MEMORIES = os.environ.get('USER_PERMISSIONS_FEATURES_M
 USER_PERMISSIONS_SETTINGS_INTERFACE = os.environ.get('USER_PERMISSIONS_SETTINGS_INTERFACE', 'True').lower() == 'true'
 
 
-DEFAULT_USER_PERMISSIONS = {
-    'workspace': {
-        'models': USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS,
-        'knowledge': USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS,
-        'prompts': USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS,
-        'tools': USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS,
-        'skills': USER_PERMISSIONS_WORKSPACE_SKILLS_ACCESS,
-        'models_import': USER_PERMISSIONS_WORKSPACE_MODELS_IMPORT,
-        'models_export': USER_PERMISSIONS_WORKSPACE_MODELS_EXPORT,
-        'prompts_import': USER_PERMISSIONS_WORKSPACE_PROMPTS_IMPORT,
-        'prompts_export': USER_PERMISSIONS_WORKSPACE_PROMPTS_EXPORT,
-        'tools_import': USER_PERMISSIONS_WORKSPACE_TOOLS_IMPORT,
-        'tools_export': USER_PERMISSIONS_WORKSPACE_TOOLS_EXPORT,
-    },
-    'sharing': {
-        'models': USER_PERMISSIONS_WORKSPACE_MODELS_ALLOW_SHARING,
-        'public_models': USER_PERMISSIONS_WORKSPACE_MODELS_ALLOW_PUBLIC_SHARING,
-        'knowledge': USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ALLOW_SHARING,
-        'public_knowledge': USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ALLOW_PUBLIC_SHARING,
-        'prompts': USER_PERMISSIONS_WORKSPACE_PROMPTS_ALLOW_SHARING,
-        'public_prompts': USER_PERMISSIONS_WORKSPACE_PROMPTS_ALLOW_PUBLIC_SHARING,
-        'tools': USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_SHARING,
-        'public_tools': USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_PUBLIC_SHARING,
-        'skills': USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_SHARING,
-        'public_skills': USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_PUBLIC_SHARING,
-        'notes': USER_PERMISSIONS_NOTES_ALLOW_SHARING,
-        'public_notes': USER_PERMISSIONS_NOTES_ALLOW_PUBLIC_SHARING,
-    },
-    'access_grants': {
-        'allow_users': USER_PERMISSIONS_ACCESS_GRANTS_ALLOW_USERS,
-    },
-    'chat': {
-        'controls': USER_PERMISSIONS_CHAT_CONTROLS,
-        'valves': USER_PERMISSIONS_CHAT_VALVES,
-        'system_prompt': USER_PERMISSIONS_CHAT_SYSTEM_PROMPT,
-        'params': USER_PERMISSIONS_CHAT_PARAMS,
-        'file_upload': USER_PERMISSIONS_CHAT_FILE_UPLOAD,
-        'web_upload': USER_PERMISSIONS_CHAT_WEB_UPLOAD,
-        'delete': USER_PERMISSIONS_CHAT_DELETE,
-        'delete_message': USER_PERMISSIONS_CHAT_DELETE_MESSAGE,
-        'continue_response': USER_PERMISSIONS_CHAT_CONTINUE_RESPONSE,
-        'regenerate_response': USER_PERMISSIONS_CHAT_REGENERATE_RESPONSE,
-        'rate_response': USER_PERMISSIONS_CHAT_RATE_RESPONSE,
-        'edit': USER_PERMISSIONS_CHAT_EDIT,
-        'share': USER_PERMISSIONS_CHAT_SHARE,
-        'export': USER_PERMISSIONS_CHAT_EXPORT,
-        'stt': USER_PERMISSIONS_CHAT_STT,
-        'tts': USER_PERMISSIONS_CHAT_TTS,
-        'call': USER_PERMISSIONS_CHAT_CALL,
-        'multiple_models': USER_PERMISSIONS_CHAT_MULTIPLE_MODELS,
-        'temporary': USER_PERMISSIONS_CHAT_TEMPORARY,
-        'temporary_enforced': USER_PERMISSIONS_CHAT_TEMPORARY_ENFORCED,
-    },
-    'features': {
-        # General features
-        'api_keys': USER_PERMISSIONS_FEATURES_API_KEYS,
-        'notes': USER_PERMISSIONS_FEATURES_NOTES,
-        'folders': USER_PERMISSIONS_FEATURES_FOLDERS,
-        'channels': USER_PERMISSIONS_FEATURES_CHANNELS,
-        'direct_tool_servers': USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS,
-        # Chat features
-        'web_search': USER_PERMISSIONS_FEATURES_WEB_SEARCH,
-        'image_generation': USER_PERMISSIONS_FEATURES_IMAGE_GENERATION,
-        'code_interpreter': USER_PERMISSIONS_FEATURES_CODE_INTERPRETER,
-        'memories': USER_PERMISSIONS_FEATURES_MEMORIES,
-    },
-    'settings': {
-        'interface': USER_PERMISSIONS_SETTINGS_INTERFACE,
-    },
-}
+def _build_user_permissions_defaults(
+    *,
+    workspace_models: bool,
+    workspace_knowledge: bool,
+    workspace_prompts: bool,
+    workspace_tools: bool,
+    workspace_skills: bool,
+) -> dict:
+    return {
+        'workspace': {
+            'models': workspace_models,
+            'knowledge': workspace_knowledge,
+            'prompts': workspace_prompts,
+            'tools': workspace_tools,
+            'skills': workspace_skills,
+            'models_import': USER_PERMISSIONS_WORKSPACE_MODELS_IMPORT,
+            'models_export': USER_PERMISSIONS_WORKSPACE_MODELS_EXPORT,
+            'prompts_import': USER_PERMISSIONS_WORKSPACE_PROMPTS_IMPORT,
+            'prompts_export': USER_PERMISSIONS_WORKSPACE_PROMPTS_EXPORT,
+            'tools_import': USER_PERMISSIONS_WORKSPACE_TOOLS_IMPORT,
+            'tools_export': USER_PERMISSIONS_WORKSPACE_TOOLS_EXPORT,
+        },
+        'sharing': {
+            'models': USER_PERMISSIONS_WORKSPACE_MODELS_ALLOW_SHARING,
+            'public_models': USER_PERMISSIONS_WORKSPACE_MODELS_ALLOW_PUBLIC_SHARING,
+            'knowledge': USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ALLOW_SHARING,
+            'public_knowledge': USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ALLOW_PUBLIC_SHARING,
+            'prompts': USER_PERMISSIONS_WORKSPACE_PROMPTS_ALLOW_SHARING,
+            'public_prompts': USER_PERMISSIONS_WORKSPACE_PROMPTS_ALLOW_PUBLIC_SHARING,
+            'tools': USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_SHARING,
+            'public_tools': USER_PERMISSIONS_WORKSPACE_TOOLS_ALLOW_PUBLIC_SHARING,
+            'skills': USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_SHARING,
+            'public_skills': USER_PERMISSIONS_WORKSPACE_SKILLS_ALLOW_PUBLIC_SHARING,
+            'notes': USER_PERMISSIONS_NOTES_ALLOW_SHARING,
+            'public_notes': USER_PERMISSIONS_NOTES_ALLOW_PUBLIC_SHARING,
+        },
+        'access_grants': {
+            'allow_users': USER_PERMISSIONS_ACCESS_GRANTS_ALLOW_USERS,
+        },
+        'chat': {
+            'controls': USER_PERMISSIONS_CHAT_CONTROLS,
+            'valves': USER_PERMISSIONS_CHAT_VALVES,
+            'system_prompt': USER_PERMISSIONS_CHAT_SYSTEM_PROMPT,
+            'params': USER_PERMISSIONS_CHAT_PARAMS,
+            'file_upload': USER_PERMISSIONS_CHAT_FILE_UPLOAD,
+            'web_upload': USER_PERMISSIONS_CHAT_WEB_UPLOAD,
+            'delete': USER_PERMISSIONS_CHAT_DELETE,
+            'delete_message': USER_PERMISSIONS_CHAT_DELETE_MESSAGE,
+            'continue_response': USER_PERMISSIONS_CHAT_CONTINUE_RESPONSE,
+            'regenerate_response': USER_PERMISSIONS_CHAT_REGENERATE_RESPONSE,
+            'rate_response': USER_PERMISSIONS_CHAT_RATE_RESPONSE,
+            'edit': USER_PERMISSIONS_CHAT_EDIT,
+            'share': USER_PERMISSIONS_CHAT_SHARE,
+            'export': USER_PERMISSIONS_CHAT_EXPORT,
+            'stt': USER_PERMISSIONS_CHAT_STT,
+            'tts': USER_PERMISSIONS_CHAT_TTS,
+            'call': USER_PERMISSIONS_CHAT_CALL,
+            'multiple_models': USER_PERMISSIONS_CHAT_MULTIPLE_MODELS,
+            'temporary': USER_PERMISSIONS_CHAT_TEMPORARY,
+            'temporary_enforced': USER_PERMISSIONS_CHAT_TEMPORARY_ENFORCED,
+        },
+        'features': {
+            'api_keys': USER_PERMISSIONS_FEATURES_API_KEYS,
+            'notes': USER_PERMISSIONS_FEATURES_NOTES,
+            'folders': USER_PERMISSIONS_FEATURES_FOLDERS,
+            'channels': USER_PERMISSIONS_FEATURES_CHANNELS,
+            'direct_tool_servers': USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS,
+            'web_search': USER_PERMISSIONS_FEATURES_WEB_SEARCH,
+            'image_generation': USER_PERMISSIONS_FEATURES_IMAGE_GENERATION,
+            'code_interpreter': USER_PERMISSIONS_FEATURES_CODE_INTERPRETER,
+            'memories': USER_PERMISSIONS_FEATURES_MEMORIES,
+        },
+        'settings': {
+            'interface': USER_PERMISSIONS_SETTINGS_INTERFACE,
+        },
+    }
+
+
+LEGACY_DEFAULT_USER_PERMISSIONS = _build_user_permissions_defaults(
+    workspace_models=False,
+    workspace_knowledge=False,
+    workspace_prompts=False,
+    workspace_tools=False,
+    workspace_skills=False,
+)
+
+_DEFAULT_USER_PERMISSIONS = _build_user_permissions_defaults(
+    workspace_models=USER_PERMISSIONS_WORKSPACE_MODELS_ACCESS,
+    workspace_knowledge=USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS,
+    workspace_prompts=USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS,
+    workspace_tools=USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS,
+    workspace_skills=USER_PERMISSIONS_WORKSPACE_SKILLS_ACCESS,
+)
+
+
+def _fill_missing_permission_values(permissions: dict, template: dict) -> dict:
+    filled = json.loads(json.dumps(permissions))
+    for key, value in template.items():
+        if key not in filled:
+            filled[key] = json.loads(json.dumps(value))
+        elif isinstance(value, dict) and isinstance(filled[key], dict):
+            filled[key] = _fill_missing_permission_values(filled[key], value)
+    return filled
+
+
+def upgrade_legacy_default_user_permissions(permissions: dict) -> dict:
+    normalized_permissions = _fill_missing_permission_values(permissions, LEGACY_DEFAULT_USER_PERMISSIONS)
+    if normalized_permissions != LEGACY_DEFAULT_USER_PERMISSIONS:
+        return permissions
+    return json.loads(json.dumps(_DEFAULT_USER_PERMISSIONS))
+
+
+DEFAULT_USER_PERMISSIONS = json.loads(json.dumps(_DEFAULT_USER_PERMISSIONS))
 
 USER_PERMISSIONS = PersistentConfig(
     'USER_PERMISSIONS',
     'user.permissions',
     DEFAULT_USER_PERMISSIONS,
 )
+
+UPGRADED_USER_PERMISSIONS = upgrade_legacy_default_user_permissions(USER_PERMISSIONS.value)
+if UPGRADED_USER_PERMISSIONS != USER_PERMISSIONS.value:
+    USER_PERMISSIONS.value = UPGRADED_USER_PERMISSIONS
+    USER_PERMISSIONS.save()
 
 ENABLE_FOLDERS = PersistentConfig(
     'ENABLE_FOLDERS',

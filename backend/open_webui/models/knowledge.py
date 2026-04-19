@@ -630,6 +630,30 @@ class KnowledgeTable:
             log.exception(e)
             return None
 
+    def update_knowledge_meta_by_id(
+        self, id: str, meta: dict, db: Optional[Session] = None
+    ) -> Optional[KnowledgeModel]:
+        try:
+            with get_db_context(db) as db:
+                knowledge = db.query(Knowledge).filter_by(id=id).first()
+                if not knowledge:
+                    return None
+
+                existing_meta = knowledge.meta or {}
+                merged_meta = {**existing_meta, **meta}
+
+                db.query(Knowledge).filter_by(id=id).update(
+                    {
+                        'meta': merged_meta,
+                        'updated_at': int(time.time()),
+                    }
+                )
+                db.commit()
+                return self.get_knowledge_by_id(id=id, db=db)
+        except Exception as e:
+            log.exception(e)
+            return None
+
     def delete_knowledge_by_id(self, id: str, db: Optional[Session] = None) -> bool:
         try:
             with get_db_context(db) as db:

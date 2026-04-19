@@ -620,6 +620,7 @@ async def lifespan(app: FastAPI):
     # when the first user lands on the / route.
     log.info('Installing external dependencies of functions and tools...')
     install_tool_and_function_dependencies()
+    log.info('Finished installing external dependencies of functions and tools.')
 
     app.state.redis = get_redis_connection(
         redis_url=REDIS_URL,
@@ -627,17 +628,22 @@ async def lifespan(app: FastAPI):
         redis_cluster=REDIS_CLUSTER,
         async_mode=True,
     )
+    log.info('Redis startup initialization complete. enabled=%s', app.state.redis is not None)
 
     if app.state.redis is not None:
         app.state.redis_task_command_listener = asyncio.create_task(redis_task_command_listener(app))
+        log.info('Redis task command listener scheduled.')
 
     if THREAD_POOL_SIZE and THREAD_POOL_SIZE > 0:
         limiter = anyio.to_thread.current_default_thread_limiter()
         limiter.total_tokens = THREAD_POOL_SIZE
+        log.info('Configured thread pool limiter size=%s', THREAD_POOL_SIZE)
 
     asyncio.create_task(periodic_usage_pool_cleanup())
     asyncio.create_task(periodic_session_pool_cleanup())
+    log.info('Scheduled periodic cleanup tasks.')
 
+    log.info('Base models cache prefetch enabled=%s', app.state.config.ENABLE_BASE_MODELS_CACHE)
     if app.state.config.ENABLE_BASE_MODELS_CACHE:
         try:
             await get_all_models(
@@ -663,6 +669,11 @@ async def lifespan(app: FastAPI):
             log.warning(f'Failed to pre-fetch models at startup: {e}')
 
     # Pre-fetch tool server specs so the first request doesn't pay the latency cost
+    log.info(
+        'Tool server pre-initialization counts: tools=%s terminals=%s',
+        len(app.state.config.TOOL_SERVER_CONNECTIONS),
+        len(app.state.config.TERMINAL_SERVER_CONNECTIONS),
+    )
     if len(app.state.config.TOOL_SERVER_CONNECTIONS) > 0:
         log.info('Initializing tool servers...')
         try:
@@ -691,6 +702,7 @@ async def lifespan(app: FastAPI):
 
     # Mark application as ready to accept traffic from a startup perspective.
     app.state.startup_complete = True
+    log.info('Application startup complete.')
 
     yield
 
