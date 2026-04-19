@@ -2049,7 +2049,7 @@ Responses from models: {{responses}}"""
 ENABLE_CODE_EXECUTION = PersistentConfig(
     'ENABLE_CODE_EXECUTION',
     'code_execution.enable',
-    os.environ.get('ENABLE_CODE_EXECUTION', 'True').lower() == 'true',
+    os.environ.get('ENABLE_CODE_EXECUTION', 'False').lower() == 'true',
 )
 
 CODE_EXECUTION_ENGINE = PersistentConfig(
@@ -2092,7 +2092,7 @@ CODE_EXECUTION_JUPYTER_TIMEOUT = PersistentConfig(
 ENABLE_CODE_INTERPRETER = PersistentConfig(
     'ENABLE_CODE_INTERPRETER',
     'code_interpreter.enable',
-    os.environ.get('ENABLE_CODE_INTERPRETER', 'True').lower() == 'true',
+    os.environ.get('ENABLE_CODE_INTERPRETER', 'False').lower() == 'true',
 )
 
 ENABLE_MEMORIES = PersistentConfig(

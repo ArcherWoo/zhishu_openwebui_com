@@ -24,7 +24,6 @@ const packages = [
 // typing_extensions, etc.) do NOT need to be listed here.
 const pypiPackages = ['black', 'pathspec', 'mypy_extensions'];
 
-import { loadPyodide } from 'pyodide';
 import { setGlobalDispatcher, ProxyAgent } from 'undici';
 import { writeFile, readFile, copyFile, readdir, rm, access, mkdir } from 'fs/promises';
 import {
@@ -58,6 +57,29 @@ function envValue(...keys) {
 const pyodideBaseUrl = envValue('OPEN_WEBUI_PYODIDE_BASE_URL');
 const pypiJsonBaseUrl = envValue('OPEN_WEBUI_PYPI_JSON_BASE_URL', 'OPEN_WEBUI_PYPI_BASE_URL');
 const pypiFilesBaseUrl = envValue('OPEN_WEBUI_PYPI_FILES_BASE_URL');
+const allowPyodideDownload = envValue('OPEN_WEBUI_ALLOW_PYODIDE_DOWNLOAD')?.toLowerCase() === 'true';
+
+async function isInstalledPyodidePackageAvailable() {
+	try {
+		await access(`${nodePyodideDir}/package.json`);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function loadPyodideModule() {
+	try {
+		const module = await import('pyodide');
+		return module.loadPyodide;
+	} catch (error) {
+		console.warn('Pyodide npm package is not installed, skipping optional runtime preparation.');
+		if (error) {
+			console.warn(error);
+		}
+		return null;
+	}
+}
 
 async function readJsonIfExists(path) {
 	try {
@@ -149,6 +171,11 @@ function initNetworkProxyFromEnv() {
 
 async function downloadPackages() {
 	console.log('Setting up pyodide + micropip');
+
+	const loadPyodide = await loadPyodideModule();
+	if (!loadPyodide) {
+		return false;
+	}
 
 	let pyodide;
 	try {
@@ -308,6 +335,12 @@ async function main() {
 		console.log(`Using custom PyPI wheel base URL: ${pypiFilesBaseUrl}`);
 	}
 
+	const pyodidePackageAvailable = await isInstalledPyodidePackageAvailable();
+	if (!pyodidePackageAvailable) {
+		console.warn('Pyodide npm package is unavailable; skipping optional Pyodide preparation.');
+		return;
+	}
+
 	const pyodideVersion = await getInstalledPyodideVersion();
 	const cacheState = await getCacheState(pyodideVersion);
 
@@ -326,6 +359,14 @@ async function main() {
 	}
 
 	await ensureCacheDirectory();
+
+	if (!allowPyodideDownload) {
+		console.warn(
+			'OPEN_WEBUI_ALLOW_PYODIDE_DOWNLOAD is not set to true; skipping network-based Pyodide cache refresh.'
+		);
+		await copyPyodide();
+		return;
+	}
 
 	const packagesOk = await downloadPackages();
 	await copyPyodide();

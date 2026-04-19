@@ -1,4 +1,22 @@
-import { loadPyodide, type PyodideInterface } from 'pyodide';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PyodideInterface = any;
+type LoadPyodide = (options: Record<string, unknown>) => Promise<PyodideInterface>;
+
+let loadPyodideRuntime: Promise<LoadPyodide> | null = null;
+const importPyodideAtRuntime = new Function(
+	'modulePath',
+	'return import(/* @vite-ignore */ modulePath);'
+) as (modulePath: string) => Promise<{ loadPyodide: LoadPyodide }>;
+
+async function getLoadPyodide(): Promise<LoadPyodide> {
+	if (!loadPyodideRuntime) {
+		loadPyodideRuntime = importPyodideAtRuntime('/pyodide/pyodide.mjs').then(
+			(module) => module.loadPyodide as LoadPyodide
+		);
+	}
+
+	return loadPyodideRuntime;
+}
 
 declare global {
 	interface Window {
@@ -26,6 +44,7 @@ const initializePyodide = async () => {
 		self.stderr = '';
 		self.cells = {};
 
+		const loadPyodide = await getLoadPyodide();
 		self.pyodide = await loadPyodide({
 			indexURL: self.indexURL
 		});

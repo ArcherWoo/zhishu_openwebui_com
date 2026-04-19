@@ -58,12 +58,19 @@ npm ci --cache .\vendor\npm --prefer-offline
 ### 3. 再准备 Pyodide 浏览器运行时资源
 
 ```powershell
+$env:OPEN_WEBUI_ALLOW_PYODIDE_DOWNLOAD='true'
 npm run pyodide:fetch
 ```
 
 这一步会把 Pyodide 相关文件和离线 wheel 准备到：
 
 - `static/pyodide/`
+
+说明：
+
+- 现在 `pyodide:fetch` 默认不会自动联网下载
+- 只有显式设置 `OPEN_WEBUI_ALLOW_PYODIDE_DOWNLOAD=true` 时，才会执行下载和锁文件生成
+- 这样做是为了避免内网环境里误触发外网请求
 
 ### 4. 打包成 Release 附件 zip
 
@@ -165,6 +172,7 @@ dir .\static\pyodide\pyodide-lock.json
 
 ```powershell
 npm ci --cache .\vendor\npm --prefer-offline
+$env:OPEN_WEBUI_ALLOW_PYODIDE_DOWNLOAD='true'
 npm run pyodide:fetch
 powershell -ExecutionPolicy Bypass -File .\scripts\package-pyodide-release.ps1 -OverwriteLatest
 ```
