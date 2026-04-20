@@ -1327,13 +1327,12 @@ def frontend_node_modules_complete() -> bool:
         return False
 
     required_markers = [
-        node_modules_dir / 'pyodide' / 'package.json',
         node_modules_dir / '@sveltejs' / 'kit' / 'package.json',
     ]
     missing = [str(path.relative_to(ROOT)) for path in required_markers if not path.exists()]
 
     if missing:
-        log(f'妫€娴嬪埌涓嶅畬鏁寸殑 node_modules锛岀己灏? {", ".join(missing)}锛屽皢閲嶆柊鎵ц npm ci銆?')
+        log(f'检测到不完整的 node_modules，缺少 {", ".join(missing)}，将重新执行 npm ci。')
         return False
 
     return True

@@ -179,6 +179,47 @@ def test_ensure_frontend_dependencies_reinstalls_when_node_modules_is_incomplete
     assert saved_state['node'] == expected_signature
 
 
+def test_frontend_node_modules_complete_logs_readable_missing_marker_message(monkeypatch, capsys):
+    temp_dir = TEST_TEMP_ROOT / 'node-modules-complete-log'
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    temp_dir.mkdir(parents=True)
+    try:
+        monkeypatch.setattr(start, 'ROOT', temp_dir)
+
+        node_modules_dir = temp_dir / 'node_modules'
+        node_modules_dir.mkdir(parents=True, exist_ok=True)
+
+        assert start.frontend_node_modules_complete() is False
+
+        captured = capsys.readouterr()
+        assert (
+            '[start] 检测到不完整的 node_modules，缺少 node_modules\\@sveltejs\\kit\\package.json，将重新执行 npm ci。'
+            in captured.out
+        )
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_frontend_node_modules_complete_does_not_require_optional_pyodide_package(monkeypatch, capsys):
+    temp_dir = TEST_TEMP_ROOT / 'node-modules-complete-optional-pyodide'
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    temp_dir.mkdir(parents=True)
+    try:
+        monkeypatch.setattr(start, 'ROOT', temp_dir)
+
+        node_modules_dir = temp_dir / 'node_modules'
+        svelte_kit_package = node_modules_dir / '@sveltejs' / 'kit' / 'package.json'
+        svelte_kit_package.parent.mkdir(parents=True, exist_ok=True)
+        svelte_kit_package.write_text('{}', encoding='utf-8')
+
+        assert start.frontend_node_modules_complete() is True
+
+        captured = capsys.readouterr()
+        assert captured.out == ''
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def test_format_pyodide_offline_guidance_mentions_restore_paths():
     guidance = start.format_pyodide_offline_guidance(stage='npm ci')
 
