@@ -391,7 +391,10 @@ def check_model_access(user, model, db=None):
     else:
         model_info = Models.get_model_by_id(model.get('id'), db=db)
         if not model_info:
-            raise Exception('Model not found')
+            # Provider-discovered models without a DB record are still valid
+            # runtime models. Treat them as readable unless an explicit
+            # access-controlled model entry has been created.
+            return
         elif not (
             user.id == model_info.user_id
             or AccessGrants.has_access(
