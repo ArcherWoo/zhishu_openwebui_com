@@ -40,6 +40,7 @@
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Markdown from '$lib/components/chat/Messages/Markdown.svelte';
+	import KnowledgeFileWorkbench from './KnowledgeFileWorkbench.svelte';
 	import Files from './KnowledgeBase/Files.svelte';
 	import AddFilesPlaceholder from '$lib/components/AddFilesPlaceholder.svelte';
 
@@ -56,6 +57,7 @@
 	import DropdownOptions from '$lib/components/common/DropdownOptions.svelte';
 	import Pagination from '$lib/components/common/Pagination.svelte';
 	import AttachWebpageModal from '$lib/components/chat/MessageInput/AttachWebpageModal.svelte';
+	import { isKnowledgeMarkdownFile } from './knowledgeMarkdownBlocks';
 
 	let largeScreen = true;
 
@@ -575,8 +577,20 @@
 
 	let dragged = false;
 	let isSaving = false;
+	$: selectedFileIsMarkdown = isKnowledgeMarkdownFile(selectedFile?.meta?.name);
 
-	const updateFileContentHandler = async () => {
+	const updateFileContentHandler = async (
+		content = selectedFileContent,
+		{
+			closeAfterSave = !selectedFileIsMarkdown,
+			showSuccessToast = true,
+			showErrorToast = true
+		}: {
+			closeAfterSave?: boolean;
+			showSuccessToast?: boolean;
+			showErrorToast?: boolean;
+		} = {}
+	) => {
 		if (isSaving) {
 			console.log('Save operation already in progress, skipping...');
 			return;
@@ -585,25 +599,40 @@
 		isSaving = true;
 
 		try {
-			const res = await updateFileDataContentById(
-				localStorage.token,
-				selectedFile.id,
-				selectedFileContent
-			).catch((e) => {
-				toast.error(`${e}`);
-				return null;
-			});
+			const res = await updateFileDataContentById(localStorage.token, selectedFile.id, content);
 
 			if (res) {
-				toast.success($i18n.t('File content updated successfully.'));
+				selectedFileContent = content;
+				if (selectedFile) {
+					selectedFile = {
+						...selectedFile,
+						data: {
+							...(selectedFile.data ?? {}),
+							content
+						}
+					};
+				}
 
-				selectedFileId = null;
-				selectedFile = null;
-				selectedFileContent = '';
-				selectedFileViewMode = 'preview';
+				if (showSuccessToast) {
+					toast.success($i18n.t('File content updated successfully.'));
+				}
 
-				await init();
+				if (closeAfterSave) {
+					selectedFileId = null;
+					selectedFile = null;
+					selectedFileContent = '';
+					selectedFileViewMode = 'preview';
+
+					await init();
+				}
 			}
+
+			return res;
+		} catch (e) {
+			if (showErrorToast) {
+				toast.error(`${e}`);
+			}
+			throw e;
 		} finally {
 			isSaving = false;
 		}
@@ -1121,35 +1150,52 @@
 										{/if}
 									</div>
 
-									<div class="shrink-0 px-3 pb-2">
-										<div class="inline-flex rounded-lg bg-gray-100 dark:bg-gray-850 p-1">
-											<button
-												type="button"
-												class="px-3 py-1.5 text-sm rounded-md transition {selectedFileViewMode === 'preview'
-													? 'bg-white dark:bg-gray-800 shadow-sm text-gray-900 dark:text-gray-100'
-													: 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
-												on:click={() => {
-													selectedFileViewMode = 'preview';
-												}}
-											>
-												{$i18n.t('Preview')}
-											</button>
-											<button
-												type="button"
-												class="px-3 py-1.5 text-sm rounded-md transition {selectedFileViewMode === 'edit'
-													? 'bg-white dark:bg-gray-800 shadow-sm text-gray-900 dark:text-gray-100'
-													: 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
-												on:click={() => {
-													selectedFileViewMode = 'edit';
-												}}
-											>
-												{$i18n.t('Edit')}
-											</button>
+									{#if !selectedFileIsMarkdown}
+										<div class="shrink-0 px-3 pb-2">
+											<div class="inline-flex rounded-lg bg-gray-100 dark:bg-gray-850 p-1">
+												<button
+													type="button"
+													class="px-3 py-1.5 text-sm rounded-md transition {selectedFileViewMode === 'preview'
+														? 'bg-white dark:bg-gray-800 shadow-sm text-gray-900 dark:text-gray-100'
+														: 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
+													on:click={() => {
+														selectedFileViewMode = 'preview';
+													}}
+												>
+													{$i18n.t('Preview')}
+												</button>
+												<button
+													type="button"
+													class="px-3 py-1.5 text-sm rounded-md transition {selectedFileViewMode === 'edit'
+														? 'bg-white dark:bg-gray-800 shadow-sm text-gray-900 dark:text-gray-100'
+														: 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
+													on:click={() => {
+														selectedFileViewMode = 'edit';
+													}}
+												>
+													{$i18n.t('Edit')}
+												</button>
+											</div>
 										</div>
-									</div>
+									{/if}
 
 									{#key selectedFile.id}
-										{#if selectedFileViewMode === 'preview'}
+										{#if selectedFileIsMarkdown}
+											<KnowledgeFileWorkbench
+												fileId={selectedFile.id}
+												fileName={selectedFile?.meta?.name ?? ''}
+												content={selectedFileContent}
+												saving={isSaving}
+												writeAccess={knowledge?.write_access ?? false}
+												onSave={async (content) => {
+													await updateFileContentHandler(content, {
+														closeAfterSave: false,
+														showSuccessToast: false,
+														showErrorToast: false
+													});
+												}}
+											/>
+										{:else if selectedFileViewMode === 'preview'}
 											<div class="w-full h-full overflow-y-auto px-3 py-2">
 												{#if selectedFileContent.trim()}
 													<div class="markdown-prose-sm max-w-none">

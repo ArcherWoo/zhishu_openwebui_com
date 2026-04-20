@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把知识库中的 Markdown 文件查看器升级成居中文档工作台，支持块级原地编辑、表格结构化编辑和自动保存，同时保留非 Markdown 文件的现有行为。
+**Goal:** 把知识库中的 Markdown 文件查看器升级成连续文稿式工作台，支持块级原地编辑、表格结构化编辑和自动保存，同时保留非 Markdown 文件的现有行为。
 
-**Architecture:** 继续复用现有知识库文件抽屉、Markdown 渲染组件和文件保存接口，但把 Markdown 文件的查看逻辑从 `KnowledgeBase.svelte` 中抽出成独立工作台组件。通过纯工具函数把 Markdown 文本拆成可编辑块、把表格文本转成结构化数据，再由工作台组件负责原地编辑、自动保存和状态反馈。
+**Architecture:** 继续复用现有知识库文件抽屉、Markdown 渲染组件和文件保存接口，但把 Markdown 文件的查看逻辑从 `KnowledgeBase.svelte` 中抽出成独立工作台组件。通过纯工具函数把 Markdown 文本拆成可编辑块、把表格文本转成结构化数据，再由工作台组件负责连续文稿纸面的组织、原地编辑、自动保存和状态反馈。
 
 **Tech Stack:** Svelte 5、TypeScript、`marked`、现有 `$lib/apis/files` 接口、Tailwind/CSS、Vitest、Vite build
 
