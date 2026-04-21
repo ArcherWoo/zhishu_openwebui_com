@@ -18,7 +18,6 @@ class ExternalDocumentLoader(BaseLoader):
         api_key: str,
         mime_type=None,
         user=None,
-        timeout: int = 60,
         **kwargs,
     ) -> None:
         self.url = url
@@ -28,7 +27,6 @@ class ExternalDocumentLoader(BaseLoader):
         self.mime_type = mime_type
 
         self.user = user
-        self.timeout = timeout
 
     def load(self) -> List[Document]:
         with open(self.file_path, 'rb') as f:
@@ -54,12 +52,7 @@ class ExternalDocumentLoader(BaseLoader):
             url = url[:-1]
 
         try:
-            response = requests.put(
-                f'{url}/process',
-                data=data,
-                headers=headers,
-                timeout=self.timeout,
-            )
+            response = requests.put(f'{url}/process', data=data, headers=headers)
         except Exception as e:
             log.error(f'Error connecting to endpoint: {e}')
             raise Exception(f'Error connecting to endpoint: {e}')
