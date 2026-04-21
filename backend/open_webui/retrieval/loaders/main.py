@@ -246,6 +246,22 @@ class Loader:
             and not file_content_type.find('html') >= 0
         )
 
+    def _should_prefer_local_loader(self, file_ext: str, file_content_type: str) -> bool:
+        if self._is_text_file(file_ext, file_content_type):
+            return True
+
+        if file_ext in ['pdf', 'ppt', 'pptx']:
+            return True
+
+        if file_content_type in [
+            'application/pdf',
+            'application/vnd.ms-powerpoint',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        ]:
+            return True
+
+        return False
+
     def _get_loader(self, filename: str, file_content_type: str, file_path: str):
         file_ext = filename.split('.')[-1].lower()
 
@@ -253,6 +269,7 @@ class Loader:
             self.engine == 'external'
             and self.kwargs.get('EXTERNAL_DOCUMENT_LOADER_URL')
             and self.kwargs.get('EXTERNAL_DOCUMENT_LOADER_API_KEY')
+            and not self._should_prefer_local_loader(file_ext, file_content_type)
         ):
             loader = ExternalDocumentLoader(
                 file_path=file_path,
@@ -260,6 +277,7 @@ class Loader:
                 api_key=self.kwargs.get('EXTERNAL_DOCUMENT_LOADER_API_KEY'),
                 mime_type=file_content_type,
                 user=self.user,
+                timeout=self.kwargs.get('EXTERNAL_DOCUMENT_LOADER_TIMEOUT', 60),
             )
         elif self.engine == 'tika' and self.kwargs.get('TIKA_SERVER_URL'):
             if self._is_text_file(file_ext, file_content_type):
