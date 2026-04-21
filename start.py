@@ -53,6 +53,8 @@ PYTHON_VENDOR_DIR = VENDOR_DIR / 'python'
 NPM_VENDOR_DIR = VENDOR_DIR / 'npm'
 VENDOR_REPORT_JSON = VENDOR_DIR / 'report.json'
 VENDOR_REPORT_MD = VENDOR_DIR / 'report.md'
+PPT_OFFLINE_RUNTIME_DIR = ROOT / 'ppt_offline_runtime'
+PPT_OFFLINE_RUNTIME_WHEELS_DIR = PPT_OFFLINE_RUNTIME_DIR / 'wheels'
 PYODIDE_RUNTIME_DIR = ROOT / 'pyodide_runtime'
 PYODIDE_STATIC_DIR = ROOT / 'static' / 'pyodide'
 PYODIDE_LOCK_FILE = PYODIDE_STATIC_DIR / 'pyodide-lock.json'
@@ -860,14 +862,18 @@ def build_python_install_commands(
     vendor_dir: Path,
     requirements_file: Path,
 ) -> tuple[list[str], list[str]]:
+    find_links_args: list[str] = []
+    for path in [vendor_dir, PPT_OFFLINE_RUNTIME_WHEELS_DIR]:
+        if path.exists():
+            find_links_args.extend(['--find-links', str(path)])
+
     local_only_command = [
         str(venv_python),
         '-m',
         'pip',
         'install',
         '--no-index',
-        '--find-links',
-        str(vendor_dir),
+        *find_links_args,
         '-r',
         str(requirements_file),
     ]
@@ -876,8 +882,7 @@ def build_python_install_commands(
         '-m',
         'pip',
         'install',
-        '--find-links',
-        str(vendor_dir),
+        *find_links_args,
         '-r',
         str(requirements_file),
     ]
@@ -1119,6 +1124,10 @@ def build_runtime_env(
     env.setdefault('HF_HOME', embedding_model_dir)
     env.setdefault('NLTK_DATA', nltk_data_dir)
     env.setdefault('AUTO_DOWNLOAD_NLTK', 'False')
+    env.setdefault('PPT_CONVERTER_COMMAND', 'soffice')
+    env.setdefault('PPT_CONVERTER_TIMEOUT_SECONDS', '120')
+    env.setdefault('PPT_MARKITDOWN_TIMEOUT_SECONDS', '120')
+    env.setdefault('PPT_FALLBACK_ENABLED', 'True')
     env.setdefault('ENABLE_UPLOAD_DECRYPTION', 'True')
     env.setdefault('DECRYPT_SERVER_URL', '')
     env.setdefault('DECRYPT_TIMEOUT_SECONDS', '120')

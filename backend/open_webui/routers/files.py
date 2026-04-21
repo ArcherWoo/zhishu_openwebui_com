@@ -1,5 +1,6 @@
 import logging
 import os
+import tempfile
 import uuid
 import json
 from pathlib import Path
@@ -100,6 +101,28 @@ def _delete_local_file_if_exists(path: str | os.PathLike | None) -> None:
             resolved.unlink()
     except Exception:
         log.warning(f'Failed to delete temporary upload artifact: {path}')
+
+
+def _persist_upload_to_temp_file(upload, filename: str) -> Path:
+    suffix = Path(filename).suffix
+
+    try:
+        upload.file.seek(0)
+    except Exception:
+        pass
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, prefix='open-webui-upload-') as temp_file:
+        while True:
+            chunk = upload.file.read(1024 * 1024)
+            if not chunk:
+                break
+            temp_file.write(chunk)
+
+    return Path(temp_file.name)
+
+
+def _build_storage_filename(file_id: str, filename: str) -> str:
+    return f'{file_id}_{os.path.basename(filename)}'
 
 
 def process_uploaded_file(
@@ -242,25 +265,17 @@ def upload_file_handler(
         # replace filename with uuid
         id = str(uuid.uuid4())
         name = filename
-        storage_filename = f'{id}_{filename}'
-        filename = storage_filename
+        storage_filename = _build_storage_filename(id, filename)
         storage_tags = {
             'OpenWebUI-User-Email': user.email,
             'OpenWebUI-User-Id': user.id,
             'OpenWebUI-User-Name': user.name,
             'OpenWebUI-File-Id': id,
         }
-        contents, file_path = Storage.upload_file(
-            file.file,
-            filename,
-            storage_tags,
-        )
-        uploaded_storage_path = file_path
-        local_uploaded_path = Path(Storage.get_file(file_path))
-
         content_type = file.content_type if isinstance(file.content_type, str) else None
 
         if not skip_decryption:
+            local_uploaded_path = _persist_upload_to_temp_file(file, filename)
             decrypted = decrypt_uploaded_file(
                 input_path=str(local_uploaded_path),
                 original_filename=name,
@@ -270,21 +285,42 @@ def upload_file_handler(
             )
             decrypted_output_path = decrypted.output_path
 
+            name = os.path.basename(decrypted.filename) if decrypted.filename else name
+            content_type = decrypted.content_type
+            storage_filename = _build_storage_filename(id, name)
+
             with decrypted.output_path.open('rb') as decrypted_file:
                 contents, file_path = Storage.upload_file(
                     decrypted_file,
                     storage_filename,
                     storage_tags,
                 )
+            uploaded_storage_path = file_path
 
-            name = decrypted.filename
-            content_type = decrypted.content_type
+            final_local_storage_path = None
+            try:
+                final_local_storage_path = Path(Storage.get_file(file_path)).resolve()
+            except Exception:
+                final_local_storage_path = None
 
-            if decrypted.output_path.resolve() != local_uploaded_path.resolve():
-                _delete_local_file_if_exists(decrypted.output_path)
-
-            if str(local_uploaded_path) != file_path:
+            if local_uploaded_path and (
+                final_local_storage_path is None or local_uploaded_path.resolve() != final_local_storage_path
+            ):
                 _delete_local_file_if_exists(local_uploaded_path)
+                local_uploaded_path = None
+
+            if decrypted_output_path and (
+                final_local_storage_path is None or decrypted_output_path.resolve() != final_local_storage_path
+            ):
+                _delete_local_file_if_exists(decrypted_output_path)
+                decrypted_output_path = None
+        else:
+            contents, file_path = Storage.upload_file(
+                file.file,
+                storage_filename,
+                storage_tags,
+            )
+            uploaded_storage_path = file_path
 
         file_item = Files.insert_new_file(
             user.id,

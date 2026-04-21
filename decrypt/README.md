@@ -1,52 +1,60 @@
-# 本地上传解密接入说明
+# 上传解密接入说明
 
-这个目录专门用来放公司内网环境里的上传解密代码。
+这个目录用于接入公司内网的文件解密服务。
 
-当前项目已经做了适配，所有通过 `/api/v1/files/` 的上传都会先调用 [client.py](/c:/Users/ArcherWoo/Desktop/open-webui-main/open-webui-main/decrypt/client.py) 里的 `decrypt_file()`。  
-也就是说，不管是：
+当前项目已经接好了上传入口，所有通过 `/api/v1/files/` 的文件上传，都会先调用：
+
+- [client.py](/C:/Users/ArcherWoo/Desktop/open-webui-main/open-webui-main/decrypt/client.py) 里的 `decrypt_file()`
+
+也就是说，下面这些场景都会先走这里的解密逻辑：
 
 - 聊天里上传附件
 - 知识库里上传文件
-- 频道、笔记等复用同一上传接口的场景
+- 其他复用同一上传接口的场景
 
-都会先走这里的解密逻辑，解密成功后才会继续文档解析和知识库入库。
+只有解密成功后，系统才会继续做文档解析、向量化和问答。
 
-## 一、你需要改哪个文件
+## 你真正要改哪个文件
 
-你真正要改的是：
+你真正需要实现的是：
 
-- [client.py](/c:/Users/ArcherWoo/Desktop/open-webui-main/open-webui-main/decrypt/client.py)
+- [client.py](/C:/Users/ArcherWoo/Desktop/open-webui-main/open-webui-main/decrypt/client.py)
 
-当前这个文件只是一个占位骨架，默认会直接报错。  
-你需要把它改成“调用公司内网亿赛通解密服务”的真实实现。
+当前它只是一个占位文件，默认会直接报错。
 
-## 二、必须实现的固定函数
+## 必须实现的函数
 
-你必须提供这个函数：
+你需要提供这个函数：
 
 ```python
 def decrypt_file(input_path: str, output_path: str, metadata: dict | None = None) -> dict:
     ...
 ```
 
-参数说明：
+## 参数说明
 
-- `input_path`
-  - 当前上传文件在本机上的临时路径
-  - 这是你要拿去解密的原始输入文件
-- `output_path`
-  - 你应该把“解密后的文件”写到这个路径
-  - 推荐直接按这个路径输出，不要自己乱改
-- `metadata`
-  - 额外上下文信息
-  - 里面会带上：
-    - `decrypt_server_url`
-    - `timeout_seconds`
-    - `original_filename`
-    - `content_type`
-  - 如果前端上传时额外带了别的 metadata，这里也可能一起带进来
+### `input_path`
 
-## 三、推荐返回格式
+- 当前上传文件在本机上的临时路径
+- 这是你要送去解密服务的输入文件
+
+### `output_path`
+
+- 你需要把“解密后的文件”写到这个路径
+- 建议直接按这个路径输出，不要自己改名改位置
+
+### `metadata`
+
+里面会带一些上下文信息，常见包括：
+
+- `decrypt_server_url`
+- `timeout_seconds`
+- `original_filename`
+- `content_type`
+
+如果前端上传时额外带了别的 metadata，也可能一起传进来。
+
+## 推荐返回格式
 
 解密成功时，建议返回：
 
@@ -54,31 +62,31 @@ def decrypt_file(input_path: str, output_path: str, metadata: dict | None = None
 {
     "success": True,
     "output_path": output_path,
-    "filename": "解密后的文件名.docx",
+    "filename": "解密后的真实文件名.docx",
     "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "message": "ok"
 }
 ```
 
-字段说明：
+### 字段含义
 
 - `success`
   - 必须是 `True`
 - `output_path`
-  - 必须是已经真实写出来的解密后文件路径
+  - 必须指向真实存在的解密后文件
 - `filename`
   - 可选
-  - 如果你希望上传后系统展示的文件名改成解密后的名字，可以返回它
+  - 如果你希望系统后续显示解密后的真实文件名，就返回它
 - `content_type`
   - 可选
-  - 如果解密后文件类型和原来不同，建议一起返回
+  - 如果解密后文件类型更明确，建议一起返回
 - `message`
   - 可选
-  - 主要用于日志或排错
+  - 主要用于日志和排查
 
-## 四、失败时怎么返回
+## 失败时怎么处理
 
-失败时有两种推荐方式。
+失败时推荐两种方式，任选一种：
 
 ### 方式 A：直接抛异常
 
@@ -95,18 +103,16 @@ raise RuntimeError("解密服务返回失败")
 }
 ```
 
-这两种方式都会让当前上传直接失败，不会继续进入文档解析和知识库流程。
+这两种方式都会让当前上传直接失败，不会继续进入文档解析流程。
 
-## 五、一个最简单的接入模板
+## 一个最简单的接入模板
 
-下面这个模板演示的是“调用公司内网 HTTP 解密服务”的常见写法。  
-你可以按你们实际接口改字段名和认证方式。
+下面这个例子演示的是“调用公司内网 HTTP 解密服务”的常见写法：
 
 ```python
 from __future__ import annotations
 
 from pathlib import Path
-import shutil
 import requests
 
 
@@ -130,9 +136,6 @@ def decrypt_file(input_path: str, output_path: str, metadata: dict | None = None
         )
 
     response.raise_for_status()
-
-    # 下面只是示例：
-    # 如果你们服务直接返回解密后的二进制文件，可以这么写
     target_file.write_bytes(response.content)
 
     return {
@@ -144,57 +147,46 @@ def decrypt_file(input_path: str, output_path: str, metadata: dict | None = None
     }
 ```
 
-## 六、如果你们服务不是直接返回文件
+你们如果不是这种接口形式，也没关系。主程序并不关心你中间怎么调，只关心最终结果是不是：
 
-有些企业服务的返回方式可能不是“直接返回解密后的文件流”，而是：
+1. 成功把解密文件写到了 `output_path`
+2. 返回了 `success=True`
+3. `output_path` 指向的文件真实存在
 
-- 先上传文件
-- 返回任务 ID
-- 再轮询状态
-- 最后下载解密后的文件
+## 当前默认配置
 
-那也没问题，你只要保证最后：
+项目现在已经支持这些环境变量：
 
-1. 真的把解密后的文件写到 `output_path`
-2. 返回 `success=True`
-3. 返回的 `output_path` 指向真实存在的文件
+- `ENABLE_UPLOAD_DECRYPTION`
+- `DECRYPT_SERVER_URL`
+- `DECRYPT_TIMEOUT_SECONDS`
+- `DECRYPT_OUTPUT_DIR`
 
-主程序不关心你中间怎么调用，只看最终结果。
-
-## 七、当前项目的默认配置
-
-当前项目已经默认设置了这些环境变量：
-
-- `ENABLE_UPLOAD_DECRYPTION=True`
-- `DECRYPT_SERVER_URL=`
-- `DECRYPT_TIMEOUT_SECONDS=120`
-- `DECRYPT_OUTPUT_DIR=<项目根目录>/backend/data/uploads/decrypted`
-
-你部署前至少要把：
+最少要配好的是：
 
 - `DECRYPT_SERVER_URL`
 
-配成你们公司解密服务的实际地址，例如：
+例如：
 
 ```text
 http://10.10.10.20:8088/decrypt
 ```
 
-## 八、怎么自测
+## 自测建议
 
-最简单的自测方法：
+最简单的自测步骤：
 
-1. 先在 [client.py](/c:/Users/ArcherWoo/Desktop/open-webui-main/open-webui-main/decrypt/client.py) 里接好你们公司的解密服务。
-2. 确认 `DECRYPT_SERVER_URL` 已配置。
-3. 重启 Open WebUI。
-4. 在聊天里上传一个平时会因为加密而无法解析的文档。
-5. 观察结果：
-   - 如果上传成功并能继续解析，说明解密链路生效
-   - 如果直接报“文件解密失败”，说明程序已经正确拦截，但你需要继续排查企业解密服务
+1. 在 [client.py](/C:/Users/ArcherWoo/Desktop/open-webui-main/open-webui-main/decrypt/client.py) 里接好你们公司的解密服务
+2. 配好 `DECRYPT_SERVER_URL`
+3. 重启 Open WebUI
+4. 上传一个原本因为加密而无法解析的文件
+5. 观察是否能继续进入解析链路
 
-## 九、最常见的错误
+如果上传时报“文件解密失败”，说明拦截逻辑已经生效，但你的解密实现还需要继续排查。
 
-### 1. 只返回了 success，没有真的写出文件
+## 常见错误
+
+### 1. 只返回 success，没有真的写文件
 
 错误示例：
 
@@ -202,25 +194,27 @@ http://10.10.10.20:8088/decrypt
 return {"success": True, "output_path": output_path}
 ```
 
-但其实 `output_path` 对应的文件并不存在。  
-这种情况下主程序会判定为失败。
+但实际 `output_path` 对应文件并不存在。
 
-### 2. 解密后写到了别的目录，却没把真实路径返回回来
+这种情况下，主程序仍然会判定失败。
 
-如果你自己改了输出路径，一定要把真实文件路径返回在 `output_path` 里。
+### 2. 解密后写到了别的目录，但没有把真实路径返回回来
+
+如果你自己改了输出目录，一定要把真实文件路径放回 `output_path`。
 
 ### 3. 没配 `DECRYPT_SERVER_URL`
 
-如果启用了上传自动解密，但没配置服务地址，上传会直接失败。
+如果启用了自动解密但没有配置服务地址，上传会直接失败。
 
 ### 4. 解密服务超时
 
-默认超时是 `120` 秒。  
-如果你们服务处理大文件很慢，可以适当调大 `DECRYPT_TIMEOUT_SECONDS`。
+默认超时是 `120` 秒。
 
-## 十、建议
+如果你们处理大文件比较慢，可以适当调大 `DECRYPT_TIMEOUT_SECONDS`。
 
-第一版接入时，建议先做到这三点就够了：
+## 建议
+
+第一版接入时，先做到这三件事就够了：
 
 1. 能稳定把输入文件送到公司解密服务
 2. 能把解密结果写回 `output_path`

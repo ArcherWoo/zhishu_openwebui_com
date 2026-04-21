@@ -22,6 +22,7 @@ from open_webui.retrieval.loaders.external_document import ExternalDocumentLoade
 from open_webui.retrieval.loaders.mistral import MistralLoader
 from open_webui.retrieval.loaders.datalab_marker import DatalabMarkerLoader
 from open_webui.retrieval.loaders.mineru import MinerULoader
+from open_webui.retrieval.loaders.powerpoint_markdown import PowerPointMarkdownLoader
 
 
 from open_webui.env import GLOBAL_LOG_LEVEL, REQUESTS_VERIFY
@@ -457,17 +458,15 @@ class Loader:
                 'application/vnd.ms-powerpoint',
                 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
             ] or file_ext in ['ppt', 'pptx']:
-                try:
-                    from langchain_community.document_loaders import UnstructuredPowerPointLoader
-
-                    loader = UnstructuredPowerPointLoader(file_path)
-                except ImportError:
-                    log.warning(
-                        "The 'unstructured' package is not installed. "
-                        'Falling back to python-pptx for PowerPoint file loading. '
-                        'Install unstructured for better results: pip install unstructured'
-                    )
-                    loader = PptxLoader(file_path)
+                loader = PowerPointMarkdownLoader(
+                    file_path=file_path,
+                    filename=filename,
+                    content_type=file_content_type,
+                    converter_command=self.kwargs.get('PPT_CONVERTER_COMMAND', 'soffice'),
+                    converter_timeout_seconds=int(self.kwargs.get('PPT_CONVERTER_TIMEOUT_SECONDS', 120)),
+                    markitdown_timeout_seconds=int(self.kwargs.get('PPT_MARKITDOWN_TIMEOUT_SECONDS', 120)),
+                    fallback_enabled=bool(self.kwargs.get('PPT_FALLBACK_ENABLED', True)),
+                )
             elif file_ext == 'msg':
                 loader = OutlookMessageLoader(file_path)
             elif file_ext == 'odt':

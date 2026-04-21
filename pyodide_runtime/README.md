@@ -1,22 +1,35 @@
 # Pyodide 内网离线导入说明
 
-这个目录是给 **Pyodide 内网离线部署** 准备的中文说明入口。
+这个目录是给 Pyodide 内网离线部署准备的中文说明入口。
 
 先说结论：
 
-- `nltk_data/` 和 `embedding_model/` 那种方案，是“后端运行时按目录读取”
-- `pyodide` 不是这一类，它是 **前端 npm 构建阶段依赖**
-- 所以它不能只靠“根目录放个文件夹”就解决第一次构建失败
-- 真正需要恢复到仓库里的，是下面两个目录：
-  - `vendor/npm/`
-  - `static/pyodide/`
+- `nltk_data/`、`embedding_model/` 那种方案，是“后端运行时按目录读取”
+- `pyodide` 不是这一类
+- `pyodide` 是前端 npm 构建阶段依赖，同时还带浏览器运行时静态资源
 
-也就是说：
+所以它不能只靠“根目录放一个文件夹”就解决。
 
-- 这个 `pyodide_runtime/` 目录主要负责放中文说明，必要时你也可以把 zip 临时放这里
-- 实际生效的离线资源，还是要通过脚本恢复到 `vendor/npm/` 和 `static/pyodide/`
+真正需要恢复到仓库里的，是这两个目录：
 
-## 一、什么时候需要它
+- `vendor/npm/`
+- `static/pyodide/`
+
+## 这个目录是干什么的
+
+`pyodide_runtime/` 主要负责两件事：
+
+1. 放中文操作说明
+2. 临时存放你从外网带进来的离线包或记录文件
+
+它本身不是实际生效位置。
+
+实际生效的离线资源，最终还是要放回：
+
+- `vendor/npm/`
+- `static/pyodide/`
+
+## 什么时候你会需要它
 
 如果你在公司内网执行：
 
@@ -24,157 +37,109 @@
 python start.py
 ```
 
-然后在一开始的前端依赖安装或构建阶段看到类似问题：
+然后在前端依赖安装或构建阶段看到类似报错：
 
 - `Cannot find package 'pyodide'`
-- `npm ci` 失败
-- `npm run build` 失败
-- `node scripts/prepare-pyodide.js` 失败
+- `ERR_MODULE_NOT_FOUND: pyodide`
+- `prepare-pyodide.js` 下载失败
 
-那就说明当前机器缺少 Pyodide 离线资产，需要走下面这套流程。
+那基本就是这块没有补齐。
 
-## 二、外网机器怎么准备
+## 为什么不能只放一个目录就完事
 
-这一步在能正常访问外网 npm 的机器上做。
+因为 Pyodide 涉及两层东西：
 
-### 1. 先进入项目根目录
+### 1. npm 构建期依赖
 
-```powershell
-cd 你的项目目录
-```
+用于让前端构建脚本能找到：
 
-### 2. 先把前端 npm 依赖装好，并填充本地缓存
+- `pyodide` npm 包
 
-```powershell
-npm ci --cache .\vendor\npm --prefer-offline
-```
+这部分要走：
 
-说明：
+- `vendor/npm/`
 
-- 这里不是只下 `pyodide`
-- 而是把 **前端整套 npm 构建所需缓存** 都放进 `vendor/npm`
-- 这样你带进内网时，`npm ci` 才更稳
+### 2. 浏览器运行时静态资源
 
-### 3. 再准备 Pyodide 浏览器运行时资源
+用于网页加载时实际访问：
 
-```powershell
-$env:OPEN_WEBUI_ALLOW_PYODIDE_DOWNLOAD='true'
-npm run pyodide:fetch
-```
+- `pyodide.js`
+- `.wasm`
+- Python 标准库压缩包
+- Micropip 等运行时资源
 
-这一步会把 Pyodide 相关文件和离线 wheel 准备到：
+这部分要走：
 
 - `static/pyodide/`
 
-说明：
+所以缺一不可。
 
-- 现在 `pyodide:fetch` 默认不会自动联网下载
-- 只有显式设置 `OPEN_WEBUI_ALLOW_PYODIDE_DOWNLOAD=true` 时，才会执行下载和锁文件生成
-- 这样做是为了避免内网环境里误触发外网请求
+## 你在内网应该怎么做
 
-### 4. 打包成 Release 附件 zip
+### 第 1 步：在外网机器准备资源
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\package-pyodide-release.ps1 -OverwriteLatest
-```
+在能联网的机器上，先把 npm 依赖和 Pyodide 运行时资源准备好。
 
-执行后会生成：
+通常你会得到两部分结果：
 
-- `dist/releases/pyodide-offline-runtime-latest.zip`
-- `dist/releases/pyodide-offline-runtime-latest.sha256`
-- `dist/releases/pyodide-offline-runtime-latest.txt`
+- 一份可复用的 npm 缓存或 vendor 目录
+- 一份完整的 `static/pyodide/` 资源目录
 
-## 三、怎么上传到 GitHub
+### 第 2 步：带进公司内网
 
-推荐做法是：
+建议把这两部分一起打包带进去。
 
-1. 把代码正常提交到 GitHub 仓库
-2. 不要把 `vendor/` 和 `static/pyodide/` 直接提交进 git
-3. 把上一步生成的 zip 作为 **GitHub Release 附件** 上传
+### 第 3 步：恢复到项目实际位置
 
-这样仓库本身不会特别重，但你在内网仍然能拿到完整离线包。
-
-## 四、内网机器怎么恢复
-
-### 1. 把 zip 放进项目里
-
-你可以放在任意位置，常见两种：
-
-- `.\pyodide_runtime\pyodide-offline-runtime-latest.zip`
-- `.\dist\releases\pyodide-offline-runtime-latest.zip`
-
-### 2. 执行恢复脚本
-
-如果 zip 放在 `pyodide_runtime/` 里：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\restore-pyodide-release.ps1 -ArchivePath .\pyodide_runtime\pyodide-offline-runtime-latest.zip
-```
-
-如果 zip 放在 `dist/releases/` 里：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\restore-pyodide-release.ps1 -ArchivePath .\dist\releases\pyodide-offline-runtime-latest.zip
-```
-
-恢复完成后，仓库里应该出现并可正常使用：
+最终你要把资源恢复到：
 
 - `vendor/npm/`
 - `static/pyodide/`
 
-### 3. 启动项目
+不是停留在 `pyodide_runtime/` 目录里。
 
-```powershell
-python start.py
-```
+## 可不可以手动复制粘贴
 
-## 五、恢复后检查什么
+可以。
 
-至少检查下面两项：
+如果你已经把外网准备好的资源解压出来了，完全可以直接手动复制到：
 
-### 1. npm 缓存目录是否存在
+- `vendor/npm/`
+- `static/pyodide/`
 
-```powershell
-dir .\vendor\npm
-```
+只要目录结构对，效果和脚本恢复是一样的。
 
-### 2. Pyodide 锁文件是否存在
+## 这和 start.py 的关系
 
-```powershell
-dir .\static\pyodide\pyodide-lock.json
-```
+`python start.py` 在构建前端时，会依赖 npm 环境和 Pyodide 相关脚本。
 
-如果这两项都有，再启动 `python start.py`，一般就能过掉之前那个 `pyodide` 缺失问题。
+如果：
 
-## 六、为什么不是直接把 pyodide 放根目录
+- `vendor/npm/` 不完整
+- 或者 `static/pyodide/` 缺失
 
-因为它和 `nltk_data/` 的性质不一样。
+就会在构建阶段失败。
 
-`nltk_data/`：
+## 你可以怎么长期维护
 
-- 后端运行时读取
-- 只要路径对，程序启动后能找到就行
+以后如果 Pyodide 或前端依赖有明显升级，建议在外网机器重新做一轮准备，然后再带新的离线包进内网替换。
 
-`pyodide`：
-
-- 前端构建期依赖
-- `npm ci` 先得能装出来
-- `scripts/prepare-pyodide.js` 还要继续读取 `node_modules/pyodide`
-
-所以这里正确的处理方式一定是：
-
-- 用 `vendor/npm` 解决 npm 构建期依赖
-- 用 `static/pyodide` 解决浏览器运行时资源
-
-## 七、建议你长期这么做
-
-以后每次 Pyodide 或前端依赖有明显升级时，就在外网机器重新跑一遍：
+一个常见流程是：
 
 ```powershell
 npm ci --cache .\vendor\npm --prefer-offline
 $env:OPEN_WEBUI_ALLOW_PYODIDE_DOWNLOAD='true'
 npm run pyodide:fetch
-powershell -ExecutionPolicy Bypass -File .\scripts\package-pyodide-release.ps1 -OverwriteLatest
 ```
 
-然后把新的 zip 替换掉旧的 Release 附件即可。
+然后把新的离线资源重新打包带进内网。
+
+## 最后再强调一次
+
+这里正确的理解是：
+
+- `pyodide_runtime/` 是说明入口
+- `vendor/npm/` 解决 npm 构建依赖
+- `static/pyodide/` 解决浏览器运行时资源
+
+只有这两部分都补齐，Pyodide 才算真正恢复。
