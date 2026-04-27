@@ -10,6 +10,13 @@ import copy
 import json
 
 
+def merge_model_params(default_params: Optional[dict], model_params: Optional[dict]) -> dict:
+    return {
+        **(default_params or {}),
+        **(model_params or {}),
+    }
+
+
 # What goes out cannot be taken back. Let it be shaped
 # well before it leaves this place.
 # inplace function: form_data is modified

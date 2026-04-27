@@ -1,15 +1,19 @@
 <script lang="ts">
 	import { getContext, onDestroy, onMount } from 'svelte';
+	import type { Writable } from 'svelte/store';
 
 	import KnowledgeMarkdownDocument from './KnowledgeMarkdownDocument.svelte';
 	import {
 		deriveSaveState,
 		hasPendingMarkdownChanges,
+		isInteractionWithinClassName,
+		isInteractionWithinTarget,
+		shouldCloseActiveEditorFromInteraction,
 		shouldWarnBeforeUnload
 	} from './knowledgeMarkdownEditorState';
 	import { parseMarkdownBlocks, replaceMarkdownBlockRaw } from './knowledgeMarkdownBlocks';
 
-	const i18n = getContext('i18n');
+	const i18n: Writable<any> = getContext('i18n');
 	const AUTOSAVE_DELAY = 900;
 
 	export let fileId: string;
@@ -28,6 +32,7 @@
 	let syncedContent = content;
 	let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 	let queuedSaveMarkdown: string | null = null;
+	let workbenchElement: HTMLDivElement | null = null;
 
 	const clearAutosaveTimer = () => {
 		if (autosaveTimer) {
@@ -131,28 +136,74 @@
 		event.returnValue = '';
 	};
 
+	const closeActiveEditor = () => {
+		if (activeBlockId) {
+			activeBlockId = null;
+		}
+	};
+
+	const handleWindowClick = (event: MouseEvent) => {
+		if (!activeBlockId || !workbenchElement) {
+			return;
+		}
+
+		const interactionPath = event.composedPath();
+		const editingBlock = workbenchElement.querySelector(
+			'.knowledge-workbench-block[data-chrome="editing"]'
+		);
+		const shouldClose = shouldCloseActiveEditorFromInteraction({
+			hasActiveEditor: !!activeBlockId,
+			withinWorkbench: isInteractionWithinTarget(interactionPath, workbenchElement),
+			withinEditingBlock: isInteractionWithinTarget(interactionPath, editingBlock),
+			withinEditableSurface: isInteractionWithinClassName(
+				interactionPath,
+				'knowledge-workbench-block__surface'
+			)
+		});
+
+		if (shouldClose) {
+			closeActiveEditor();
+		}
+	};
+
+	const handleWindowKeydown = (event: KeyboardEvent) => {
+		if (event.key === 'Escape') {
+			closeActiveEditor();
+		}
+	};
+
 	onMount(() => {
 		window.addEventListener('beforeunload', handleBeforeUnload);
+		window.addEventListener('click', handleWindowClick);
+		window.addEventListener('keydown', handleWindowKeydown);
 	});
 
 	onDestroy(() => {
 		clearAutosaveTimer();
 		window.removeEventListener('beforeunload', handleBeforeUnload);
+		window.removeEventListener('click', handleWindowClick);
+		window.removeEventListener('keydown', handleWindowKeydown);
 	});
 </script>
 
-<div class="knowledge-workbench-shell flex h-full min-h-0 flex-col">
+<div class="knowledge-workbench-shell flex h-full min-h-0 flex-col" bind:this={workbenchElement}>
 	<div class="knowledge-workbench-toolbar">
 		<div class="knowledge-workbench-toolbar__copy">
 			<div class="knowledge-workbench-toolbar__eyebrow">知识文档工作台</div>
 			<div class="knowledge-workbench-toolbar__filename">{fileName}</div>
 			<div class="knowledge-workbench-toolbar__hint">
-				{writeAccess ? '默认像文稿一样阅读，悬停后轻触即可编辑。' : '当前为只读文稿视图。'}
+				{#if !writeAccess}
+					当前为只读文稿视图。
+				{:else if activeBlockId}
+					点击空白处或按 Esc 退出编辑，内容会自动保存。
+				{:else}
+					默认像文稿一样阅读，轻触任意区块即可编辑。
+				{/if}
 			</div>
 		</div>
 
 		<div class="knowledge-workbench-toolbar__status" data-state={saveState}>
-			<span class="knowledge-workbench-toolbar__status-dot" />
+			<span class="knowledge-workbench-toolbar__status-dot"></span>
 			<span>{saveStateLabel}</span>
 		</div>
 	</div>
@@ -180,7 +231,9 @@
 		{:else}
 			<div class="knowledge-workbench-document">
 				<article class="knowledge-workbench-paper">
-					<div class="rounded-2xl border border-dashed border-slate-300/90 px-6 py-10 text-sm text-slate-500">
+					<div
+						class="rounded-2xl border border-dashed border-slate-300/90 px-6 py-10 text-sm text-slate-500"
+					>
 						{$i18n.t('No content found')}
 					</div>
 				</article>

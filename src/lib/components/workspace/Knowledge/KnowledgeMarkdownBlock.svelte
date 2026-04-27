@@ -1,11 +1,10 @@
 <script lang="ts">
+	import { tick } from 'svelte';
+
 	import Markdown from '$lib/components/chat/Messages/Markdown.svelte';
 	import KnowledgeMarkdownTableEditor from './KnowledgeMarkdownTableEditor.svelte';
 	import {
-		appendMarkdownTableRow,
-		duplicateMarkdownTableRow,
 		parseMarkdownTable,
-		removeMarkdownTableRow,
 		stringifyMarkdownTable,
 		type MarkdownTableData
 	} from './knowledgeMarkdownTables';
@@ -21,9 +20,16 @@
 
 	let draft = '';
 	let tableDraft: MarkdownTableData | null = null;
+	let editorElement: HTMLTextAreaElement | null = null;
 
 	$: if (active) {
 		draft = block.raw;
+	}
+
+	$: if (active && writeAccess && block.kind !== 'table') {
+		void tick().then(() => {
+			editorElement?.focus();
+		});
 	}
 
 	$: if (block.kind === 'table') {
@@ -47,28 +53,23 @@
 >
 	{#if active && writeAccess && block.kind !== 'table'}
 		<textarea
+			bind:this={editorElement}
 			class="knowledge-workbench-block__editor font-mono text-sm outline-none ring-0"
 			bind:value={draft}
 			on:blur={() => onCommit(draft, { closeEditor: true })}
-		/>
+			on:keydown={(event) => {
+				if (event.key === 'Escape') {
+					event.stopPropagation();
+					onCommit(draft, { closeEditor: true });
+				}
+			}}
+		></textarea>
 	{:else if active && writeAccess && block.kind === 'table' && tableDraft}
 		<KnowledgeMarkdownTableEditor
 			table={tableDraft}
 			onInput={(nextTable) => {
 				tableDraft = nextTable;
 				onCommit(stringifyMarkdownTable(nextTable));
-			}}
-			onAddRow={() => {
-				tableDraft = appendMarkdownTableRow(tableDraft);
-				onCommit(stringifyMarkdownTable(tableDraft));
-			}}
-			onDuplicateRow={(rowIndex) => {
-				tableDraft = duplicateMarkdownTableRow(tableDraft, rowIndex);
-				onCommit(stringifyMarkdownTable(tableDraft));
-			}}
-			onRemoveRow={(rowIndex) => {
-				tableDraft = removeMarkdownTableRow(tableDraft, rowIndex);
-				onCommit(stringifyMarkdownTable(tableDraft));
 			}}
 		/>
 	{:else if writeAccess}

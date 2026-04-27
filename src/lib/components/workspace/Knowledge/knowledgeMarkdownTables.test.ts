@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	appendMarkdownTableRow,
+	appendMarkdownTableColumn,
 	duplicateMarkdownTableRow,
 	parseMarkdownTable,
+	removeMarkdownTableColumn,
 	removeMarkdownTableRow,
-	stringifyMarkdownTable
+	stringifyMarkdownTable,
+	updateMarkdownTableCell,
+	updateMarkdownTableHeader
 } from './knowledgeMarkdownTables';
 
 describe('knowledgeMarkdownTables', () => {
@@ -66,5 +70,48 @@ describe('knowledgeMarkdownTables', () => {
 		]);
 
 		expect(removeMarkdownTableRow(duplicated, 0).rows).toEqual([['分类', '办公耗材']]);
+	});
+
+	it('edits headers and cells without mutating the original table', () => {
+		const table = {
+			headers: ['字段', '内容'],
+			rows: [['分类', '办公耗材']]
+		};
+
+		const withHeader = updateMarkdownTableHeader(table, 0, '属性');
+		const withCell = updateMarkdownTableCell(table, 0, 1, '办公用品');
+
+		expect(withHeader.headers).toEqual(['属性', '内容']);
+		expect(withCell.rows).toEqual([['分类', '办公用品']]);
+		expect(table).toEqual({
+			headers: ['字段', '内容'],
+			rows: [['分类', '办公耗材']]
+		});
+	});
+
+	it('appends and removes columns across headers and rows', () => {
+		const table = {
+			headers: ['字段', '内容'],
+			rows: [
+				['分类', '办公耗材'],
+				['维护人', '采购工程B']
+			]
+		};
+
+		const appended = appendMarkdownTableColumn(table);
+
+		expect(appended.headers).toEqual(['字段', '内容', '']);
+		expect(appended.rows).toEqual([
+			['分类', '办公耗材', ''],
+			['维护人', '采购工程B', '']
+		]);
+
+		expect(removeMarkdownTableColumn(appended, 1)).toEqual({
+			headers: ['字段', ''],
+			rows: [
+				['分类', ''],
+				['维护人', '']
+			]
+		});
 	});
 });

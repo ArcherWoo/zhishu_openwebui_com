@@ -99,6 +99,7 @@ from open_webui.routers import (
     scim,
     terminals,
 )
+from open_webui.utils.payload import merge_model_params
 
 from open_webui.routers.retrieval import (
     get_embedding_function,
@@ -1676,10 +1677,10 @@ async def chat_completion(
 
         # Model params: global defaults as base, per-model overrides win
         default_model_params = getattr(request.app.state.config, 'DEFAULT_MODEL_PARAMS', None) or {}
-        model_info_params = {
-            **default_model_params,
-            **(model_info.params.model_dump() if model_info and model_info.params else {}),
-        }
+        model_info_params = merge_model_params(
+            default_model_params,
+            model_info.params.model_dump() if model_info and model_info.params else {},
+        )
 
         # Check base model existence for custom models
         if model_info and model_info.base_model_id:

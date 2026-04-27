@@ -1173,31 +1173,28 @@ except Exception as e:
 if default_prompt_suggestions == []:
     default_prompt_suggestions = [
         {
-            'title': ['Help me study', 'vocabulary for a college entrance exam'],
-            'content': "Help me study vocabulary: write a sentence for me to fill in the blank, and I'll try to pick the correct option.",
+            'title': ['帮我学习', '准备高考英语词汇'],
+            'content': '请帮我练习英语词汇：写一个挖空句子，并给出几个选项，让我尝试选择正确答案。',
         },
         {
-            'title': ['Give me ideas', "for what to do with my kids' art"],
-            'content': "What are 5 creative things I could do with my kids' art? I don't want to throw them away, but it's also so much clutter.",
+            'title': ['帮我出主意', '整理孩子的画作'],
+            'content': '孩子的画作很多，我不想直接丢掉，但也不想越堆越乱。请给我 5 个有创意又实用的处理办法。',
         },
         {
-            'title': ['Tell me a fun fact', 'about the Roman Empire'],
-            'content': 'Tell me a random fun fact about the Roman Empire',
+            'title': ['讲个冷知识', '关于中国古代科技'],
+            'content': '请随机讲一个关于中国古代科技的有趣冷知识，并用通俗语言解释它为什么厉害。',
         },
         {
-            'title': ['Show me a code snippet', "of a website's sticky header"],
-            'content': "Show me a code snippet of a website's sticky header in CSS and JavaScript.",
+            'title': ['给我一段代码', '实现网页吸顶导航栏'],
+            'content': '请给我一段用 CSS 和 JavaScript 实现网页吸顶导航栏的示例代码，并简单说明关键点。',
         },
         {
-            'title': [
-                'Explain options trading',
-                "if I'm familiar with buying and selling stocks",
-            ],
-            'content': "Explain options trading in simple terms if I'm familiar with buying and selling stocks.",
+            'title': ['解释一个概念', '用通俗话讲期权交易'],
+            'content': '假设我只了解股票买卖，请用通俗易懂的方式解释什么是期权交易。',
         },
         {
-            'title': ['Overcome procrastination', 'give me tips'],
-            'content': 'Could you start by asking me about instances when I procrastinate the most and then give me some suggestions to overcome it?',
+            'title': ['帮我改善拖延', '先问我几个问题'],
+            'content': '请先问我通常在哪些场景最容易拖延，然后根据我的回答给出可执行的改善建议。',
         },
     ]
 
@@ -1219,10 +1216,27 @@ DEFAULT_MODEL_METADATA = PersistentConfig(
     {},
 )
 
+DEFAULT_CHINESE_SYSTEM_PROMPT = os.environ.get(
+    'DEFAULT_CHINESE_SYSTEM_PROMPT',
+    (
+        '你是一名默认使用简体中文交流的 AI 助手。'
+        '除非用户明确要求使用其他语言，否则你的回答、追问、建议、标题、摘要和可见的辅助说明都应使用简体中文。'
+        '如果需要保留代码、命令、专有名词、接口名或原文引用，可以保留必要的英文。'
+    ),
+)
+
+try:
+    default_model_params = json.loads(os.environ.get('DEFAULT_MODEL_PARAMS', '{}'))
+except Exception as e:
+    log.exception(f'Error loading DEFAULT_MODEL_PARAMS: {e}')
+    default_model_params = {}
+if default_model_params == {}:
+    default_model_params = {'system': DEFAULT_CHINESE_SYSTEM_PROMPT}
+
 DEFAULT_MODEL_PARAMS = PersistentConfig(
     'DEFAULT_MODEL_PARAMS',
     'models.default_params',
-    {},
+    default_model_params,
 )
 
 DEFAULT_USER_ROLE = PersistentConfig(
@@ -1829,18 +1843,18 @@ FOLLOW_UP_GENERATION_PROMPT_TEMPLATE = PersistentConfig(
     os.environ.get('FOLLOW_UP_GENERATION_PROMPT_TEMPLATE', ''),
 )
 
-DEFAULT_FOLLOW_UP_GENERATION_PROMPT_TEMPLATE = """### Task:
-Suggest 3-5 relevant follow-up questions or prompts that the user might naturally ask next in this conversation as a **user**, based on the chat history, to help continue or deepen the discussion.
-### Guidelines:
-- Write all follow-up questions from the user’s point of view, directed to the assistant.
-- Make questions concise, clear, and directly related to the discussed topic(s).
-- Only suggest follow-ups that make sense given the chat content and do not repeat what was already covered.
-- If the conversation is very short or not specific, suggest more general (but relevant) follow-ups the user might ask.
-- Use the conversation's primary language; default to English if multilingual.
-- Response must be a JSON object with a "follow_ups" key containing an array of strings, no extra text or formatting.
-### Output:
-JSON format: { "follow_ups": ["Question 1?", "Question 2?", "Question 3?"] }
-### Chat History:
+DEFAULT_FOLLOW_UP_GENERATION_PROMPT_TEMPLATE = """### 任务:
+根据聊天历史，从用户视角生成 3-5 个自然、相关、可以继续深入本轮对话的追问或提示。
+### 要求:
+- 始终使用简体中文输出所有追问，即使聊天中出现英文、代码、专有名词或多语言内容。
+- 所有追问都要从用户角度书写，面向助手提问。
+- 追问要简洁、清楚，并且直接关联已经讨论过的主题。
+- 不要重复已经问过或已经回答过的内容。
+- 如果对话很短或主题不明确，可以给出更通用但仍然相关的中文追问。
+- 必须只返回 JSON 对象，包含 "follow_ups" 键，值为字符串数组，不要输出额外说明或 Markdown。
+### 输出:
+JSON 格式: { "follow_ups": ["追问 1？", "追问 2？", "追问 3？"] }
+### 聊天历史:
 <chat_history>
 {{MESSAGES:END:6}}
 </chat_history>"""

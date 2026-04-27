@@ -48,6 +48,7 @@ from open_webui.constants import ERROR_MESSAGES
 from open_webui.utils.payload import (
     apply_model_params_to_body_openai,
     apply_system_prompt_to_body,
+    merge_model_params,
 )
 from open_webui.utils.misc import (
     cleanup_response,
@@ -1037,7 +1038,10 @@ async def generate_chat_completion(
             payload['model'] = base_model_id
             model_id = base_model_id
 
-        params = model_info.params.model_dump()
+        params = merge_model_params(
+            getattr(request.app.state.config, 'DEFAULT_MODEL_PARAMS', None),
+            model_info.params.model_dump(),
+        )
 
         if params:
             system = params.pop('system', None)

@@ -28,6 +28,47 @@ export const shouldWarnBeforeUnload = ({
 	saving: boolean;
 }): boolean => dirty || saving;
 
+export const isInteractionWithinTarget = (
+	interactionPath: readonly unknown[],
+	target: unknown
+): boolean => !!target && interactionPath.includes(target);
+
+export const isInteractionWithinClassName = (
+	interactionPath: readonly unknown[],
+	className: string
+): boolean =>
+	interactionPath.some((node) => {
+		if (!(typeof node === 'object') || node === null || !('classList' in node)) {
+			return false;
+		}
+
+		const classList = (node as { classList?: { contains?: (className: string) => boolean } })
+			.classList;
+		return classList?.contains?.(className) ?? false;
+	});
+
+export const shouldCloseActiveEditorFromInteraction = ({
+	hasActiveEditor,
+	withinWorkbench,
+	withinEditingBlock,
+	withinEditableSurface
+}: {
+	hasActiveEditor: boolean;
+	withinWorkbench: boolean;
+	withinEditingBlock: boolean;
+	withinEditableSurface: boolean;
+}): boolean => {
+	if (!hasActiveEditor) {
+		return false;
+	}
+
+	if (!withinWorkbench) {
+		return true;
+	}
+
+	return !withinEditingBlock && !withinEditableSurface;
+};
+
 export const deriveKnowledgeBlockPresentation = ({
 	kind,
 	active,

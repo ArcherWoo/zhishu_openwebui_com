@@ -56,6 +56,7 @@ from open_webui.utils.payload import (
     apply_model_params_to_body_ollama,
     apply_model_params_to_body_openai,
     apply_system_prompt_to_body,
+    merge_model_params,
 )
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.config import (
@@ -1278,7 +1279,10 @@ async def generate_chat_completion(
             )  # Use request's base_model_id if available
             payload['model'] = base_model_id
 
-        params = model_info.params.model_dump()
+        params = merge_model_params(
+            getattr(request.app.state.config, 'DEFAULT_MODEL_PARAMS', None),
+            model_info.params.model_dump(),
+        )
 
         if params:
             system = params.pop('system', None)
@@ -1384,7 +1388,10 @@ async def generate_openai_completion(
     if model_info:
         if model_info.base_model_id:
             payload['model'] = model_info.base_model_id
-        params = model_info.params.model_dump()
+        params = merge_model_params(
+            getattr(request.app.state.config, 'DEFAULT_MODEL_PARAMS', None),
+            model_info.params.model_dump(),
+        )
 
         if params:
             payload = apply_model_params_to_body_openai(params, payload)
@@ -1460,7 +1467,10 @@ async def generate_openai_chat_completion(
         if model_info.base_model_id:
             payload['model'] = model_info.base_model_id
 
-        params = model_info.params.model_dump()
+        params = merge_model_params(
+            getattr(request.app.state.config, 'DEFAULT_MODEL_PARAMS', None),
+            model_info.params.model_dump(),
+        )
 
         if params:
             system = params.pop('system', None)

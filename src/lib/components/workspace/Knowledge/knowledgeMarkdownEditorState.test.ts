@@ -4,6 +4,9 @@ import {
 	deriveKnowledgeBlockPresentation,
 	deriveSaveState,
 	hasPendingMarkdownChanges,
+	isInteractionWithinClassName,
+	isInteractionWithinTarget,
+	shouldCloseActiveEditorFromInteraction,
 	shouldWarnBeforeUnload
 } from './knowledgeMarkdownEditorState';
 
@@ -70,5 +73,58 @@ describe('knowledgeMarkdownEditorState', () => {
 			layout: 'flow',
 			chrome: 'static'
 		});
+	});
+
+	it('keeps the editor open when the interaction path still points at the workbench surface', () => {
+		const workbench = { id: 'workbench' };
+		const surface = {
+			classList: {
+				contains: (className: string) => className === 'knowledge-workbench-block__surface'
+			}
+		};
+
+		const interactionPath = [surface, workbench];
+
+		expect(isInteractionWithinTarget(interactionPath, workbench)).toBe(true);
+		expect(
+			isInteractionWithinClassName(interactionPath, 'knowledge-workbench-block__surface')
+		).toBe(true);
+		expect(
+			shouldCloseActiveEditorFromInteraction({
+				hasActiveEditor: true,
+				withinWorkbench: true,
+				withinEditingBlock: false,
+				withinEditableSurface: true
+			})
+		).toBe(false);
+	});
+
+	it('closes the editor only when the interaction lands outside the active block and surface', () => {
+		expect(
+			shouldCloseActiveEditorFromInteraction({
+				hasActiveEditor: true,
+				withinWorkbench: true,
+				withinEditingBlock: false,
+				withinEditableSurface: false
+			})
+		).toBe(true);
+
+		expect(
+			shouldCloseActiveEditorFromInteraction({
+				hasActiveEditor: true,
+				withinWorkbench: false,
+				withinEditingBlock: false,
+				withinEditableSurface: false
+			})
+		).toBe(true);
+
+		expect(
+			shouldCloseActiveEditorFromInteraction({
+				hasActiveEditor: false,
+				withinWorkbench: false,
+				withinEditingBlock: false,
+				withinEditableSurface: false
+			})
+		).toBe(false);
 	});
 });
